@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  metadata:
+    name: Verify repo metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify LICENSE is Apache-2.0
+        run: |
+          test -f LICENSE
+          head -3 LICENSE | grep -q "Apache License"
+      - name: Verify README exists
+        run: test -f README.md
