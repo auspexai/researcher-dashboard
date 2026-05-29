@@ -44,9 +44,7 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 r = await client.get(f"{config.coord_url}/api/v0/health/public")
                 coord_ok = r.status_code == 200
-                coord_detail = (
-                    r.json().get("status") if coord_ok else f"HTTP {r.status_code}"
-                )
+                coord_detail = r.json().get("status") if coord_ok else f"HTTP {r.status_code}"
         except httpx.HTTPError as e:
             coord_ok = False
             coord_detail = f"error: {e!s}"

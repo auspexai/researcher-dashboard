@@ -55,6 +55,5 @@ class ResearcherDashboardConfig:
                 )
             ),
             key_path=Path(os.environ.get("AUSPEXAI_TENANT_KEY", str(_default_key_path()))),
-            open_browser=os.environ.get("OPEN_BROWSER", "true").lower()
-            in ("1", "true", "yes"),
+            open_browser=os.environ.get("OPEN_BROWSER", "true").lower() in ("1", "true", "yes"),
         )

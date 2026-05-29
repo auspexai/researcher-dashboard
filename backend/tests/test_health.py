@@ -45,7 +45,9 @@ def test_health_reports_key_absence(tmp_path: Path) -> None:
     body = absent.get("/api/v0/health").json()
     assert body["identity"]["key_present"] is False
     # Presence flag only — never the key material itself.
-    assert "key" not in {k.lower() for k in body["identity"] if k != "key_path" and k != "key_present"}
+    assert "key" not in {
+        k.lower() for k in body["identity"] if k != "key_path" and k != "key_present"
+    }
 
 
 def test_placeholder_served_when_no_static_bundle(tmp_path: Path) -> None:

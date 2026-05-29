@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Python dependencies live in backend/pyproject.toml. Grouped so a single PR
+  # bumps the dev toolchain (ruff, pytest, …) instead of one PR per package.
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+  # npm dependencies for the SvelteKit frontend.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-dependencies:
+        patterns: ["*"]
+  # GitHub Actions used by the CI / release workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
