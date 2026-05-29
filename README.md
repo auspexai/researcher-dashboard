@@ -4,7 +4,28 @@ Tenant-scoped researcher / tenant view for [AuspexAI](https://github.com/auspexa
 
 ## Status
 
-**Phase 0 — Foundation placeholder.** Active development begins in Phase 1, in parallel with the coordinator daemon. The researcher dashboard is one of four Phase 1 UI surfaces per §5.18 of the AuspexAI Principles & Scope document.
+**R-D0 — scaffold (2026-05-28).** FastAPI backend + SvelteKit static frontend; `auspexai-dashboard serve` runs the dashboard locally and opens a browser. Placeholder pages + a health probe (coordinator connectivity + tenant-key presence). No authenticated coordinator calls yet. Full design + milestones: `Documentation/AuspexAI/v0.1.0/researcher_dashboard_design.md`.
+
+The researcher dashboard is one of four Phase 1 UI surfaces per §5.18 of the AuspexAI Principles & Scope document.
+
+### Run it locally
+
+```bash
+cd backend && pip install -e ".[dev]"
+cd ../frontend && pnpm install && pnpm build && cp -r build/* ../backend/src/auspexai_researcher_dashboard/static/
+auspexai-dashboard serve        # starts on 127.0.0.1:4228 and opens a browser
+```
+
+For frontend dev with live reload: `cd frontend && pnpm dev` (proxies `/api` to the backend on :4228).
+
+### Milestones
+
+- **R-D0** ✅ scaffold (this).
+- **R-D1** prerequisites in sibling repos: RFC 9421 request signer in `tenant-sdk`; tenant-scoped `GET /experiments/{id}/receipts` on `platform`.
+- **R-D2** my-experiments list + detail with work-unit/replication progress (signed reads).
+- **R-D3** my-experiment receipts view.
+- **R-D4** lifecycle actions (abort; pause/resume).
+- **R-D5 (v1)** live SSE progress; receipt-detail verification; create-experiment form.
 
 ## Scope
 

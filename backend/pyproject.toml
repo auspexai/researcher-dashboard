@@ -1,0 +1,70 @@
+[project]
+name = "auspexai-researcher-dashboard"
+version = "0.1.0"
+description = "Tenant-scoped, locally-run dashboard for researchers shipping experiments on the AuspexAI volunteer compute network"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [
+    { name = "AuspexAI Maintainers", email = "contact@auspexai.network" },
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "httpx>=0.27",
+    "click>=8.1",
+    # The researcher's Ed25519 key, RFC 9421 request signing, and schema models
+    # all come from the tenant SDK (researcher_dashboard_design.md §5). It is
+    # promoted to a hard runtime dependency in R-D1 — when the SDK ships its
+    # RFC 9421 request signer (§7.1) and is installable (PyPI publish is
+    # currently deferred). R-D0 only detects key *presence*, which config.py
+    # does via a soft import with a literal-path fallback, so the SDK is not a
+    # hard dependency yet.
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+auspexai-dashboard = "auspexai_researcher_dashboard.cli:main"
+
+[project.urls]
+Homepage = "https://auspexai.network"
+Repository = "https://github.com/auspexai/researcher-dashboard"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/auspexai_researcher_dashboard"]
+
+# Force-include the frontend-built static bundle if present at build time.
+[tool.hatch.build.targets.wheel.force-include]
+"src/auspexai_researcher_dashboard/static" = "auspexai_researcher_dashboard/static"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"

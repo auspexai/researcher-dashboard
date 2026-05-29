@@ -18,3 +18,47 @@ jobs:
           head -3 LICENSE | grep -q "Apache License"
       - name: Verify README exists
         run: test -f README.md
+
+  backend:
+    name: Backend (ruff + pytest)
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check src tests
+      - name: Test
+        run: pytest
+
+  frontend:
+    name: Frontend (svelte-check + build)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+      - name: Check
+        run: pnpm run check
+      - name: Build
+        run: pnpm run build

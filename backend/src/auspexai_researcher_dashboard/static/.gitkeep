@@ -1,0 +1,3 @@
+# The SvelteKit frontend build output is copied here at packaging time
+# (see pyproject.toml [tool.hatch.build.targets.wheel.force-include]).
+# Empty in the repo; populated by `pnpm build` + copy.
