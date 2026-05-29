@@ -1,6 +1,6 @@
 [project]
 name = "auspexai-researcher-dashboard"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Tenant-scoped, locally-run dashboard for researchers shipping experiments on the AuspexAI volunteer compute network"
 readme = "README.md"
 license = "Apache-2.0"
@@ -48,8 +48,15 @@ Homepage = "https://auspexai.network"
 Repository = "https://github.com/auspexai/researcher-dashboard"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+# Version derived from git tags (hatch-vcs), stamped at build. The git root is
+# one level up (this pyproject lives in backend/, .git is in the repo root), so
+# point setuptools_scm at it. See version_provenance.md (V-M1).
+[tool.hatch.version]
+source = "vcs"
+raw-options = { root = ".." }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/auspexai_researcher_dashboard"]

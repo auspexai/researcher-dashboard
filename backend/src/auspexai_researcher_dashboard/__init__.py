@@ -10,4 +10,7 @@ tenant SDK) lands in R-D1/R-D2. See researcher_dashboard_design.md.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+from importlib.metadata import version as _v
+
+# Git-derived (hatch-vcs); read from installed metadata. See version_provenance.md.
+__version__ = _v("auspexai-researcher-dashboard")
