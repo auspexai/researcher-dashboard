@@ -1,4 +1,5 @@
-"""R-D0 smoke tests: app factory builds and the health probe responds."""
+"""Smoke tests: app factory builds, the health probe responds, and static
+serving degrades gracefully when no SPA bundle is built yet."""
 
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ def test_health_reports_version_and_phase(tmp_path: Path) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
-    assert body["phase"].startswith("R-D0")
+    assert body["phase"].startswith("R-D2")
     # Coordinator unreachable → reachable is False, not an exception.
     assert body["coord"]["reachable"] is False
 
@@ -52,6 +53,27 @@ def test_health_reports_key_absence(tmp_path: Path) -> None:
 
 def test_placeholder_served_when_no_static_bundle(tmp_path: Path) -> None:
     client = TestClient(create_app(_config(tmp_path, key=False)))
+    r = client.get("/")
+    assert r.status_code == 200
+    assert r.json()["status"] == "frontend bundle not present"
+
+
+def test_static_dir_present_but_unbuilt_does_not_crash(tmp_path: Path) -> None:
+    """Regression: the scaffold ships static/.gitkeep, so the static_dir EXISTS
+    before any `vite build` — but has no index.html / _app. The app must boot
+    and serve the placeholder, not raise mounting a missing _app directory."""
+    static = tmp_path / "static"
+    static.mkdir()
+    (static / ".gitkeep").write_text("")  # dir present, no built bundle
+    config = ResearcherDashboardConfig(
+        coord_url="http://127.0.0.1:9",
+        bind_host="127.0.0.1",
+        bind_port=4228,
+        static_dir=static,
+        key_path=tmp_path / "maintainer_key",
+        open_browser=False,
+    )
+    client = TestClient(create_app(config))  # must not raise
     r = client.get("/")
     assert r.status_code == 200
     assert r.json()["status"] == "frontend bundle not present"

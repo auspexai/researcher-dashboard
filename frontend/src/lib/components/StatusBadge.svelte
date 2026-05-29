@@ -1,0 +1,65 @@
+<script lang="ts">
+	let { status }: { status: string | undefined } = $props();
+
+	// Map lifecycle status → a tone class. Unknown statuses fall back to neutral.
+	const tone: Record<string, string> = {
+		submitted: 'neutral',
+		approved: 'info',
+		running: 'active',
+		paused: 'warn',
+		completed: 'ok',
+		aborted: 'bad',
+		archived: 'muted'
+	};
+	const cls = $derived(tone[status ?? ''] ?? 'neutral');
+</script>
+
+<span class="badge {cls}">{status ?? 'unknown'}</span>
+
+<style>
+	.badge {
+		display: inline-block;
+		font-size: 0.72rem;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		padding: 0.12rem 0.5rem;
+		border-radius: 999px;
+		border: 1px solid transparent;
+		text-transform: lowercase;
+	}
+	.neutral {
+		color: #b8bfd0;
+		background: #1a2236;
+		border-color: #2a3450;
+	}
+	.info {
+		color: #93c5fd;
+		background: #10203a;
+		border-color: #1e3a5f;
+	}
+	.active {
+		color: #67e8f9;
+		background: #0a2630;
+		border-color: #155e6b;
+	}
+	.warn {
+		color: #fbbf24;
+		background: #251d09;
+		border-color: #4a3a13;
+	}
+	.ok {
+		color: #6ee7b7;
+		background: #07251c;
+		border-color: #135e44;
+	}
+	.bad {
+		color: #fca5a5;
+		background: #2a1115;
+		border-color: #5e1f28;
+	}
+	.muted {
+		color: #8b93a7;
+		background: #141a28;
+		border-color: #232c42;
+	}
+</style>

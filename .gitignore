@@ -98,6 +98,10 @@ dist
 # Sveltekit cache directory
 .svelte-kit/
 
+# SvelteKit adapter-static build output (copied into the backend static dir at
+# package build time; never committed).
+frontend/build/
+
 # vitepress build output
 **/.vitepress/dist
 

@@ -1,12 +1,12 @@
 """FastAPI app factory for the researcher dashboard.
 
-R-D0: serves the SvelteKit-built static frontend + a small JSON health API.
-The health endpoint probes the coordinator AND reports whether the
-researcher's SDK key is present, so the placeholder page can show both
-"backend -> coord" connectivity and "is my identity set up?" status.
+Serves the SvelteKit-built static frontend + a small JSON API:
+- `/api/v0/health` probes the coordinator AND reports whether the researcher's
+  SDK key is present ("backend -> coord" connectivity + "is my identity set up?").
+- the R-D2 tenant-scoped read proxy (`/api/v0/experiments[...]`, see api.py),
+  which signs each coordinator request with the SDK's RFC 9421 signer.
 
-No authenticated coordinator calls yet. Tenant-scoped reads (signed via the
-SDK's RFC 9421 signer) land in R-D2; the tenant-scoped receipt view in R-D3.
+The tenant-scoped receipt view lands in R-D3.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .api import build_api_router
 from .config import ResearcherDashboardConfig
 
 
@@ -27,12 +28,16 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
     app = FastAPI(
         title="AuspexAI Researcher Dashboard",
         version=__version__,
-        description="Tenant-scoped, locally-run researcher view. R-D0 placeholder.",
+        description="Tenant-scoped, locally-run researcher view.",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
     app.state.config = config
+
+    # Tenant-scoped read proxy (R-D2). Registered before the SPA catch-all
+    # below so /api/v0/* resolves here, not to the index.html fallback.
+    app.include_router(build_api_router())
 
     @app.get("/api/v0/health")
     async def health() -> JSONResponse:
@@ -54,7 +59,7 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
                 "status": "ok",
                 "version": __version__,
                 "server_time": now,
-                "phase": "R-D0 (scaffold)",
+                "phase": "R-D2 (read views)",
                 "coord": {
                     "url": config.coord_url,
                     "reachable": coord_ok,
@@ -69,13 +74,20 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
             }
         )
 
-    if config.static_dir.is_dir():
-        index_html = config.static_dir / "index.html"
-        app.mount(
-            "/_app",
-            StaticFiles(directory=str(config.static_dir / "_app")),
-            name="static-assets",
-        )
+    # Serve the SPA only when an actual built bundle is present. Gate on
+    # index.html (the build's entrypoint), not merely the directory existing —
+    # the scaffold ships a static/.gitkeep, so `static_dir.is_dir()` is true
+    # even before any `vite build`, which would make the /_app mount raise at
+    # startup. In source/dev the placeholder branch runs until the SPA is built.
+    index_html = config.static_dir / "index.html"
+    app_assets = config.static_dir / "_app"
+    if index_html.is_file():
+        if app_assets.is_dir():
+            app.mount(
+                "/_app",
+                StaticFiles(directory=str(app_assets)),
+                name="static-assets",
+            )
 
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str) -> FileResponse:

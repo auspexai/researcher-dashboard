@@ -23,12 +23,14 @@ dependencies = [
     "httpx>=0.27",
     "click>=8.1",
     # The researcher's Ed25519 key, RFC 9421 request signing, and schema models
-    # all come from the tenant SDK (researcher_dashboard_design.md §5). It is
-    # promoted to a hard runtime dependency in R-D1 — when the SDK ships its
-    # RFC 9421 request signer (§7.1) and is installable (PyPI publish is
-    # currently deferred). R-D0 only detects key *presence*, which config.py
-    # does via a soft import with a literal-path fallback, so the SDK is not a
-    # hard dependency yet.
+    # all come from the tenant SDK (researcher_dashboard_design.md §5/§7.1). Now
+    # a hard runtime dependency as of R-D2: the backend signs every coordinator
+    # request with the SDK's Rfc9421Auth. The SDK's RFC 9421 request signer
+    # shipped in R-D1(a). PyPI publish for both packages is still deferred, so
+    # in practice install the SDK alongside this package from the sibling repo
+    # (e.g. `pip install -e ../tenant-sdk -e .`); once published this resolves
+    # normally.
+    "auspexai-tenant",
 ]
 
 [project.optional-dependencies]
