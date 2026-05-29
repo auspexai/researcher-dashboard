@@ -60,4 +60,12 @@ def build_api_router() -> APIRouter:
         """Per-status work-unit progress for one of my experiments."""
         return await _proxy(request, f"/api/v0/experiments/{experiment_id}/work-units")
 
+    @router.get("/auth/whoami")
+    async def whoami(request: Request) -> JSONResponse:
+        """The *confirmed bound* identity: the coordinator resolves the signing
+        key to `credential_class` + (for a researcher) their own `tenant_id` +
+        `pubkey_hex`. An `unauthorized` error here means the key isn't bound /
+        was rotated (R-D2.5; design §10-Q4)."""
+        return await _proxy(request, "/api/v0/auth/whoami")
+
     return router

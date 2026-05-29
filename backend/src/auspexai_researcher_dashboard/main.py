@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import httpx
+from auspexai_tenant.signing import MaintainerKey
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +22,20 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .api import build_api_router
 from .config import ResearcherDashboardConfig
+
+
+def _local_pubkey_hex(config: ResearcherDashboardConfig) -> str | None:
+    """The PUBLIC key of the local tenant key, or None if absent/invalid.
+
+    Safe to surface (it's public, and it's what a researcher submits during
+    onboarding). Never exposes the private material beyond loading it to derive
+    the pubkey. The confirmed *bound* identity comes from the coordinator's
+    /auth/whoami; this is the "what key is on disk" half of the comparison.
+    """
+    try:
+        return MaintainerKey.load(config.key_path).pubkey_hex
+    except (FileNotFoundError, ValueError, OSError):
+        return None
 
 
 def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
@@ -45,11 +60,17 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
         now = datetime.now(UTC).isoformat()
         coord_ok: bool | None = None
         coord_detail: str | None = None
+        coord_version: str | None = None
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 r = await client.get(f"{config.coord_url}/api/v0/health/public")
                 coord_ok = r.status_code == 200
-                coord_detail = r.json().get("status") if coord_ok else f"HTTP {r.status_code}"
+                if coord_ok:
+                    body = r.json()
+                    coord_detail = body.get("status")
+                    coord_version = body.get("version")
+                else:
+                    coord_detail = f"HTTP {r.status_code}"
         except httpx.HTTPError as e:
             coord_ok = False
             coord_detail = f"error: {e!s}"
@@ -59,17 +80,20 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
                 "status": "ok",
                 "version": __version__,
                 "server_time": now,
-                "phase": "R-D2 (read views)",
+                "phase": "R-D2.5 (identity)",
                 "coord": {
                     "url": config.coord_url,
                     "reachable": coord_ok,
                     "detail": coord_detail,
+                    "version": coord_version,
                 },
                 "identity": {
-                    # Presence only — never the key material. The researcher's
-                    # key IS their tenant identity (design note §3/§5).
+                    # Presence + the PUBLIC key only — never the private key
+                    # material. The researcher's key IS their tenant identity
+                    # (design note §3/§5). pubkey_hex is None if no/invalid key.
                     "key_path": str(config.key_path),
                     "key_present": config.key_path.is_file(),
+                    "pubkey_hex": _local_pubkey_hex(config),
                 },
             }
         )

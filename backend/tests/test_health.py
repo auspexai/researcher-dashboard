@@ -77,3 +77,25 @@ def test_static_dir_present_but_unbuilt_does_not_crash(tmp_path: Path) -> None:
     r = client.get("/")
     assert r.status_code == 200
     assert r.json()["status"] == "frontend bundle not present"
+
+
+def test_health_exposes_local_pubkey_with_real_key(tmp_path: Path) -> None:
+    """R-D2.5: /health surfaces the PUBLIC key of the local tenant key (never
+    the private material), so the Overview can compare it to the bound key."""
+    from auspexai_tenant.signing import MaintainerKey
+
+    key_path = tmp_path / "maintainer_key"
+    key = MaintainerKey.generate()
+    key.save(key_path)
+    config = ResearcherDashboardConfig(
+        coord_url="http://127.0.0.1:9",
+        bind_host="127.0.0.1",
+        bind_port=4228,
+        static_dir=tmp_path / "no-static",
+        key_path=key_path,
+        open_browser=False,
+    )
+    body = TestClient(create_app(config)).get("/api/v0/health").json()
+    assert body["identity"]["key_present"] is True
+    assert body["identity"]["pubkey_hex"] == key.pubkey_hex
+    assert body["phase"].startswith("R-D2.5")

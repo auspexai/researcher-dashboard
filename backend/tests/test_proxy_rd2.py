@@ -152,3 +152,30 @@ def test_unreachable_coordinator_maps(tmp_path: Path) -> None:
     response = client.get("/api/v0/experiments")
     assert response.status_code == 502
     assert response.json()["error"]["kind"] == "unreachable"
+
+
+def test_whoami_signed_and_proxied(tmp_path: Path) -> None:
+    rec = _Recorder(
+        {
+            "/api/v0/auth/whoami": (
+                200,
+                {"credential_class": "researcher", "tenant_id": "t1", "pubkey_hex": "ab" * 32},
+            )
+        }
+    )
+    client, pubkey = _make_client(tmp_path, rec)
+    response = client.get("/api/v0/auth/whoami")
+    assert response.status_code == 200
+    assert response.json()["tenant_id"] == "t1"
+    req = rec.requests[0]
+    assert req.url.path == "/api/v0/auth/whoami"
+    assert "Signature" in req.headers
+    assert f'keyid="{pubkey}"' in req.headers["Signature-Input"]
+
+
+def test_whoami_unauthorized_maps_to_key_not_recognized(tmp_path: Path) -> None:
+    rec = _Recorder({"/api/v0/auth/whoami": (401, {"detail": "bad sig"})})
+    client, _ = _make_client(tmp_path, rec)
+    response = client.get("/api/v0/auth/whoami")
+    assert response.status_code == 401
+    assert response.json()["error"]["kind"] == "unauthorized"

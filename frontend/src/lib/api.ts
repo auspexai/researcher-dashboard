@@ -83,10 +83,19 @@ export interface WorkUnits {
 	counts_by_status?: Record<string, number>;
 }
 
+// The confirmed bound identity from the coordinator's /auth/whoami. For a
+// researcher: credential_class="researcher" + their own tenant_id + pubkey_hex.
+export interface WhoAmI {
+	credential_class: string;
+	tenant_id?: string;
+	pubkey_hex?: string;
+}
+
 export const api = {
 	listExperiments: () => getJson<{ experiments?: Experiment[] }>('/api/v0/experiments'),
 	getExperiment: (id: string) =>
 		getJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}`),
 	getWorkUnits: (id: string) =>
-		getJson<WorkUnits>(`/api/v0/experiments/${encodeURIComponent(id)}/work-units`)
+		getJson<WorkUnits>(`/api/v0/experiments/${encodeURIComponent(id)}/work-units`),
+	whoami: () => getJson<WhoAmI>('/api/v0/auth/whoami')
 };

@@ -1,24 +1,45 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { api, ApiError, type WhoAmI } from '$lib/api';
+	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	type Health = {
 		version: string;
 		phase: string;
-		coord: { url: string; reachable: boolean | null; detail: string | null };
-		identity: { key_path: string; key_present: boolean };
+		coord: { url: string; reachable: boolean | null; detail: string | null; version: string | null };
+		identity: { key_path: string; key_present: boolean; pubkey_hex: string | null };
 	};
 
 	let health = $state<Health | null>(null);
-	let error = $state<string | null>(null);
+	let healthError = $state<string | null>(null);
+	let whoami = $state<WhoAmI | null>(null);
+	let whoamiError = $state<ApiError | null>(null);
+
+	// pubkeys are 64 hex chars; show head…tail, full string on hover.
+	const short = (k: string | null | undefined) => (k ? `${k.slice(0, 10)}…${k.slice(-8)}` : '—');
 
 	onMount(async () => {
 		try {
-			const r = await fetch('/api/v0/health');
-			health = await r.json();
+			health = await (await fetch('/api/v0/health')).json();
 		} catch (e) {
-			error = String(e);
+			healthError = String(e);
+			return;
+		}
+		// whoami is a signed coordinator round-trip — only attempt with a key present.
+		if (health?.identity.key_present) {
+			try {
+				whoami = await api.whoami();
+			} catch (e) {
+				whoamiError = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+			}
 		}
 	});
+
+	const local = $derived(health?.identity.pubkey_hex ?? null);
+	const bound = $derived(whoami?.pubkey_hex ?? null);
+	// true = local key matches the coordinator's binding; false = mismatch (rotated?);
+	// null = can't compare yet.
+	const matches = $derived(local && bound ? local === bound : null);
 </script>
 
 <h1>Overview</h1>
@@ -26,21 +47,38 @@
 	Your local, tenant-scoped view of what your research is doing on the AuspexAI network.
 </p>
 
-{#if error}
-	<p class="err">Could not reach the local backend: {error}</p>
+{#if healthError}
+	<p class="err">Could not reach the local backend: {healthError}</p>
 {:else if !health}
 	<p class="muted">Loading…</p>
 {:else}
 	<div class="grid">
 		<div class="card">
 			<h2>Identity</h2>
-			{#if health.identity.key_present}
-				<p class="ok">Tenant key found</p>
-			{:else}
+			{#if !health.identity.key_present}
 				<p class="warn">No tenant key</p>
 				<p class="muted">
 					Run <code>auspexai-tenant key generate</code> once your tenant is approved.
 				</p>
+			{:else if whoami?.tenant_id}
+				<p class="ok">Tenant <strong>{whoami.tenant_id}</strong></p>
+				<p class="kv"><span>bound key</span><code title={bound ?? ''}>{short(bound)}</code></p>
+				{#if matches === true}
+					<p class="ok small">✓ local key matches the binding</p>
+				{:else if matches === false}
+					<p class="warn small">
+						⚠ local key differs from the bound key — did you rotate it? Rebind via the operator
+						console.
+					</p>
+				{/if}
+			{:else if whoami}
+				<!-- key present + recognized, but not a researcher tenant (e.g. anonymous/maintainer) -->
+				<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>
+			{:else if !whoamiError}
+				<p class="muted">Confirming identity…</p>
+			{/if}
+			{#if health.identity.key_present}
+				<p class="kv"><span>local key</span><code title={local ?? ''}>{short(local)}</code></p>
 			{/if}
 			<p class="path">{health.identity.key_path}</p>
 		</div>
@@ -55,7 +93,17 @@
 			{#if health.coord.detail}<p class="muted">{health.coord.detail}</p>{/if}
 		</div>
 	</div>
-	<p class="footer muted">{health.phase} · v{health.version}</p>
+
+	{#if whoamiError}
+		<!-- Most importantly the unauthorized case: key present locally but the
+		     coordinator has no tenant bound to it (unbound or rotated). -->
+		<ErrorState error={whoamiError} />
+	{/if}
+
+	<p class="footer muted">
+		{health.phase} · dashboard v{health.version}{#if health.coord.version}
+			· coordinator v{health.coord.version}{/if}
+	</p>
 {/if}
 
 <style>
@@ -67,7 +115,7 @@
 	}
 	.grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 		gap: 1rem;
 		margin-top: 1rem;
 	}
@@ -92,6 +140,9 @@
 		color: #fbbf24;
 		margin: 0.25rem 0;
 	}
+	.small {
+		font-size: 0.8rem;
+	}
 	.err {
 		color: #fca5a5;
 	}
@@ -99,11 +150,30 @@
 		color: #8b93a7;
 		font-size: 0.85rem;
 	}
+	.kv {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 0.75rem;
+		margin: 0.3rem 0;
+		font-size: 0.8rem;
+	}
+	.kv span {
+		color: #8b93a7;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		font-size: 0.68rem;
+	}
+	.kv code {
+		font-family: ui-monospace, monospace;
+		color: #b8bfd0;
+	}
 	.path {
 		font-family: ui-monospace, monospace;
 		font-size: 0.75rem;
 		color: #6b7390;
 		word-break: break-all;
+		margin-top: 0.5rem;
 	}
 	code {
 		background: #1a2236;
