@@ -6,7 +6,7 @@
 	type Health = {
 		version: string;
 		phase: string;
-		coord: { url: string; reachable: boolean | null; detail: string | null; version: string | null };
+		coord: { url: string; reachable: boolean | null; detail: string | null };
 		identity: { key_path: string; key_present: boolean; pubkey_hex: string | null };
 	};
 
@@ -100,10 +100,7 @@
 		<ErrorState error={whoamiError} />
 	{/if}
 
-	<p class="footer muted">
-		{health.phase} · dashboard v{health.version}{#if health.coord.version}
-			· coordinator v{health.coord.version}{/if}
-	</p>
+	<p class="footer muted">{health.phase} · dashboard v{health.version}</p>
 {/if}
 
 <style>

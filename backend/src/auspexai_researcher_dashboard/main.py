@@ -60,17 +60,11 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
         now = datetime.now(UTC).isoformat()
         coord_ok: bool | None = None
         coord_detail: str | None = None
-        coord_version: str | None = None
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 r = await client.get(f"{config.coord_url}/api/v0/health/public")
                 coord_ok = r.status_code == 200
-                if coord_ok:
-                    body = r.json()
-                    coord_detail = body.get("status")
-                    coord_version = body.get("version")
-                else:
-                    coord_detail = f"HTTP {r.status_code}"
+                coord_detail = r.json().get("status") if coord_ok else f"HTTP {r.status_code}"
         except httpx.HTTPError as e:
             coord_ok = False
             coord_detail = f"error: {e!s}"
@@ -85,7 +79,6 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
                     "url": config.coord_url,
                     "reachable": coord_ok,
                     "detail": coord_detail,
-                    "version": coord_version,
                 },
                 "identity": {
                     # Presence + the PUBLIC key only — never the private key
