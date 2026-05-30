@@ -83,6 +83,27 @@ export interface WorkUnits {
 	counts_by_status?: Record<string, number>;
 }
 
+// Mirrors the coordinator's tenant-scoped ReceiptSummary (R-D1b). Worker
+// identity (worker_id / worker_pubkey) is stripped coordinator-side, so the
+// tenant sees that a receipt exists for its experiment, not who earned it.
+export interface Receipt {
+	receipt_id: string;
+	experiment_id?: string;
+	issued_at?: string;
+}
+
+// Mirrors the coordinator's ExperimentActivityResponse (R-D3). Every field is
+// an aggregate count or timestamp — no per-worker identity.
+export interface ExperimentActivity {
+	experiment_id?: string;
+	active_contributor_count?: number;
+	total_work_units?: number;
+	work_unit_counts?: Record<string, number>;
+	last_activity_at?: string;
+	completions_total?: number;
+	replication_target_total?: number;
+}
+
 // The confirmed bound identity from the coordinator's /auth/whoami. For a
 // researcher: credential_class="researcher" + their own tenant_id + pubkey_hex.
 export interface WhoAmI {
@@ -97,5 +118,11 @@ export const api = {
 		getJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}`),
 	getWorkUnits: (id: string) =>
 		getJson<WorkUnits>(`/api/v0/experiments/${encodeURIComponent(id)}/work-units`),
+	getExperimentReceipts: (id: string) =>
+		getJson<{ receipts?: Receipt[] }>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/receipts`
+		),
+	getExperimentActivity: (id: string) =>
+		getJson<ExperimentActivity>(`/api/v0/experiments/${encodeURIComponent(id)}/activity`),
 	whoami: () => getJson<WhoAmI>('/api/v0/auth/whoami')
 };
