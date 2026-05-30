@@ -136,6 +136,33 @@
 		<p class="anon-note">
 			Contributor count is anonymized — a tenant cannot see which volunteers ran its work.
 		</p>
+
+		{#if activity.own_workers && activity.own_workers.length > 0}
+			<h3>Your workers</h3>
+			<p class="muted">
+				{activity.own_workers.length} of your own-account {activity.own_workers.length === 1
+					? 'worker is'
+					: 'workers are'} backing this experiment.
+			</p>
+			<table class="workers">
+				<thead>
+					<tr><th>Worker</th><th>Tier</th><th>Results</th><th>Last activity</th></tr>
+				</thead>
+				<tbody>
+					{#each activity.own_workers as w (w.worker_id)}
+						<tr>
+							<td>
+								<span class="wid">{w.worker_id}</span>
+								<span class="mono pk">{w.worker_pubkey_hex.slice(0, 16)}…</span>
+							</td>
+							<td>T{w.trust_tier}</td>
+							<td>{w.result_count}</td>
+							<td class="muted">{fmt(w.last_activity_at)}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		{/if}
 	{/if}
 
 	<h2>Work units</h2>
@@ -244,6 +271,13 @@
 		color: #8b93a7;
 		margin: 1.5rem 0 0.5rem;
 	}
+	h3 {
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: #8b93a7;
+		margin: 1.1rem 0 0.4rem;
+	}
 	.muted {
 		color: #8b93a7;
 		font-size: 0.85rem;
@@ -294,12 +328,14 @@
 		font-size: 0.72rem;
 		margin: 0.35rem 0 0;
 	}
-	table.receipts {
+	table.receipts,
+	table.workers {
 		width: 100%;
 		border-collapse: collapse;
 		margin-top: 0.5rem;
 	}
-	table.receipts th {
+	table.receipts th,
+	table.workers th {
 		text-align: left;
 		font-size: 0.68rem;
 		text-transform: uppercase;
@@ -308,11 +344,21 @@
 		padding: 0.4rem 0.6rem;
 		border-bottom: 1px solid #1e2638;
 	}
-	table.receipts td {
+	table.receipts td,
+	table.workers td {
 		padding: 0.4rem 0.6rem;
 		border-bottom: 1px solid #141b2c;
 		font-size: 0.85rem;
 		color: #e6e9f0;
+	}
+	.wid {
+		color: #e6e9f0;
+	}
+	.pk {
+		display: block;
+		font-family: ui-monospace, monospace;
+		font-size: 0.7rem;
+		color: #6b7390;
 	}
 	td.mono {
 		font-family: ui-monospace, monospace;

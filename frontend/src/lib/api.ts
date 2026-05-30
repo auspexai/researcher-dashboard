@@ -92,8 +92,22 @@ export interface Receipt {
 	issued_at?: string;
 }
 
-// Mirrors the coordinator's ExperimentActivityResponse (R-D3). Every field is
-// an aggregate count or timestamp — no per-worker identity.
+// One of the tenant's OWN-account workers, shown non-anonymously (R-D3
+// own-worker enrichment). Only present for workers bound to the same account as
+// the experiment's tenant; the coordinator strips third-party identities and
+// only sends this to the owning researcher (ACCOUNT_SCOPED).
+export interface OwnWorkerActivity {
+	worker_id: string;
+	worker_pubkey_hex: string;
+	result_count: number;
+	trust_tier: number;
+	last_activity_at?: string;
+}
+
+// Mirrors the coordinator's ExperimentActivityResponse (R-D3). The aggregate
+// fields carry no per-worker identity; `own_workers` is the one account-scoped
+// exception — the tenant's own-account workers, absent when the tenant isn't
+// account-linked.
 export interface ExperimentActivity {
 	experiment_id?: string;
 	active_contributor_count?: number;
@@ -102,6 +116,7 @@ export interface ExperimentActivity {
 	last_activity_at?: string;
 	completions_total?: number;
 	replication_target_total?: number;
+	own_workers?: OwnWorkerActivity[];
 }
 
 // The confirmed bound identity from the coordinator's /auth/whoami. For a
