@@ -92,6 +92,36 @@ def test_activity_signed_and_proxied_verbatim(tmp_path: Path) -> None:
     assert str(req.url) == f"{COORD}/api/v0/experiments/exp-1/activity"
 
 
+def test_activity_own_workers_passed_through_verbatim(tmp_path: Path) -> None:
+    """R-D3 own-worker enrichment: the coordinator may include `own_workers`
+    (the tenant's own-account workers, non-anonymized). The proxy is dumb — it
+    forwards the field verbatim; the coordinator already gated it ACCOUNT_SCOPED
+    and stripped third-party identities server-side."""
+    payload = {
+        "experiment_id": "exp-1",
+        "active_contributor_count": 4,
+        "total_work_units": 3,
+        "work_unit_counts": {"completed": 2, "pending": 1},
+        "completions_total": 6,
+        "replication_target_total": 9,
+        "own_workers": [
+            {
+                "worker_id": "w-own-1",
+                "worker_pubkey_hex": "aa" * 32,
+                "result_count": 2,
+                "trust_tier": 1,
+                "last_activity_at": "2026-05-30T12:01:00Z",
+            }
+        ],
+    }
+    rec = _Recorder({"/api/v0/experiments/exp-1/activity": (200, payload)})
+    client, _ = _make_client(tmp_path, rec)
+
+    response = client.get("/api/v0/experiments/exp-1/activity")
+    assert response.status_code == 200
+    assert response.json() == payload
+
+
 def test_receipts_not_found_is_enveloped(tmp_path: Path) -> None:
     rec = _Recorder({})  # coordinator 404s → tenant-private not_found envelope
     client, _ = _make_client(tmp_path, rec)
