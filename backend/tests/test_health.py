@@ -99,3 +99,13 @@ def test_health_exposes_local_pubkey_with_real_key(tmp_path: Path) -> None:
     assert body["identity"]["key_present"] is True
     assert body["identity"]["pubkey_hex"] == key.pubkey_hex
     assert body["phase"].startswith("R-D2.5")
+
+
+def test_health_surfaces_full_package_version(tmp_path: Path) -> None:
+    """/health reports the package version VERBATIM — never truncated — so a
+    non-release build self-identifies via its `.devN+gSHA` suffix rather than a
+    clean-looking lie (version_provenance.md §7)."""
+    from auspexai_researcher_dashboard import __version__
+
+    body = TestClient(create_app(_config(tmp_path, key=False))).get("/api/v0/health").json()
+    assert body["version"] == __version__
