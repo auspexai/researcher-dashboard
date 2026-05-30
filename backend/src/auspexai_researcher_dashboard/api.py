@@ -60,6 +60,21 @@ def build_api_router() -> APIRouter:
         """Per-status work-unit progress for one of my experiments."""
         return await _proxy(request, f"/api/v0/experiments/{experiment_id}/work-units")
 
+    @router.get("/experiments/{experiment_id}/receipts")
+    async def list_experiment_receipts(request: Request, experiment_id: str) -> JSONResponse:
+        """Receipts issued for one of my experiments to the volunteers who ran it
+        (R-D3, consumes coordinator R-D1b). Worker identity is stripped
+        coordinator-side — the tenant sees that receipts exist, not who earned
+        them (volunteer-anonymity rule)."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/receipts")
+
+    @router.get("/experiments/{experiment_id}/activity")
+    async def get_experiment_activity(request: Request, experiment_id: str) -> JSONResponse:
+        """Anonymized liveness rollup for one of my experiments (R-D3):
+        active-contributor count, work-unit status breakdown, last-activity
+        timestamp, replication fill. Aggregates only — no worker identities."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/activity")
+
     @router.get("/auth/whoami")
     async def whoami(request: Request) -> JSONResponse:
         """The *confirmed bound* identity: the coordinator resolves the signing

@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { api, ApiError, type Experiment, type WorkUnits } from '$lib/api';
+	import {
+		api,
+		ApiError,
+		type Experiment,
+		type ExperimentActivity,
+		type Receipt,
+		type WorkUnits
+	} from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 
@@ -8,14 +15,16 @@
 
 	let experiment = $state<Experiment | null>(null);
 	let workUnits = $state<WorkUnits | null>(null);
+	let activity = $state<ExperimentActivity | null>(null);
+	let receipts = $state<Receipt[] | null>(null);
 	let error = $state<ApiError | null>(null);
 	let loading = $state(true);
 
 	const fmt = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
 
-	// Re-fetch whenever the route id changes. Work-units may legitimately be
-	// empty (none submitted yet), so a work-units failure is non-fatal — we
-	// still render the experiment detail.
+	// Re-fetch whenever the route id changes. Work-units, activity, and receipts
+	// may legitimately be empty (none submitted yet), so each secondary fetch is
+	// non-fatal — only a failure to load the experiment itself is fatal.
 	$effect(() => {
 		const current = id;
 		if (!current) return;
@@ -23,6 +32,8 @@
 		error = null;
 		experiment = null;
 		workUnits = null;
+		activity = null;
+		receipts = null;
 		(async () => {
 			try {
 				experiment = await api.getExperiment(current);
@@ -30,6 +41,16 @@
 					workUnits = await api.getWorkUnits(current);
 				} catch {
 					workUnits = null;
+				}
+				try {
+					activity = await api.getExperimentActivity(current);
+				} catch {
+					activity = null;
+				}
+				try {
+					receipts = (await api.getExperimentReceipts(current)).receipts ?? [];
+				} catch {
+					receipts = null;
 				}
 			} catch (e) {
 				error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
@@ -41,6 +62,16 @@
 
 	const counts = $derived(workUnits?.counts_by_status ?? {});
 	const totalUnits = $derived(Object.values(counts).reduce((a, b) => a + b, 0));
+
+	// Replication fill as a 0–100% bar; guard against divide-by-zero pre-activity.
+	const fillPct = $derived(
+		activity?.replication_target_total
+			? Math.min(
+					100,
+					Math.round(((activity.completions_total ?? 0) / activity.replication_target_total) * 100)
+				)
+			: 0
+	);
 </script>
 
 <p class="back"><a href="/experiments">← My Experiments</a></p>
@@ -76,6 +107,37 @@
 		{/if}
 	</section>
 
+	<h2>Activity</h2>
+	{#if !activity}
+		<p class="muted">No activity yet.</p>
+	{:else}
+		<div class="counts">
+			<div class="count">
+				<span class="n">{activity.active_contributor_count ?? 0}</span>
+				<span class="label">active contributors</span>
+			</div>
+			<div class="count">
+				<span class="n">{activity.completions_total ?? 0}/{activity.replication_target_total ?? 0}</span>
+				<span class="label">replication fill</span>
+			</div>
+			<div class="count">
+				<span class="n">{activity.total_work_units ?? 0}</span>
+				<span class="label">work units</span>
+			</div>
+		</div>
+		{#if activity.replication_target_total}
+			<div class="bar" title="{fillPct}% replicated">
+				<div class="bar-fill" style="width: {fillPct}%"></div>
+			</div>
+		{/if}
+		<p class="muted last-activity">
+			Last activity: {fmt(activity.last_activity_at)}
+		</p>
+		<p class="anon-note">
+			Contributor count is anonymized — a tenant cannot see which volunteers ran its work.
+		</p>
+	{/if}
+
 	<h2>Work units</h2>
 	{#if totalUnits === 0}
 		<p class="muted">No work units submitted yet.</p>
@@ -89,6 +151,28 @@
 				</div>
 			{/each}
 		</div>
+	{/if}
+
+	<h2>Receipts</h2>
+	{#if receipts === null}
+		<p class="muted">Receipts unavailable.</p>
+	{:else if receipts.length === 0}
+		<p class="muted">No receipts issued yet — they appear as volunteers complete work.</p>
+	{:else}
+		<p class="muted">{receipts.length} issued</p>
+		<table class="receipts">
+			<thead>
+				<tr><th>Receipt</th><th>Issued</th></tr>
+			</thead>
+			<tbody>
+				{#each receipts as r (r.receipt_id)}
+					<tr>
+						<td class="mono">{r.receipt_id}</td>
+						<td class="muted">{fmt(r.issued_at)}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
 	{/if}
 {/if}
 
@@ -183,5 +267,56 @@
 		font-size: 1.25rem;
 		font-weight: 700;
 		color: #e6e9f0;
+	}
+	.count .label {
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: #8b93a7;
+	}
+	.bar {
+		height: 8px;
+		background: #1e2638;
+		border-radius: 4px;
+		overflow: hidden;
+		margin: 0.75rem 0 0.25rem;
+	}
+	.bar-fill {
+		height: 100%;
+		background: #4a7dff;
+		transition: width 0.3s ease;
+	}
+	.last-activity {
+		margin: 0.5rem 0 0;
+	}
+	.anon-note {
+		color: #6b7390;
+		font-size: 0.72rem;
+		margin: 0.35rem 0 0;
+	}
+	table.receipts {
+		width: 100%;
+		border-collapse: collapse;
+		margin-top: 0.5rem;
+	}
+	table.receipts th {
+		text-align: left;
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: #8b93a7;
+		padding: 0.4rem 0.6rem;
+		border-bottom: 1px solid #1e2638;
+	}
+	table.receipts td {
+		padding: 0.4rem 0.6rem;
+		border-bottom: 1px solid #141b2c;
+		font-size: 0.85rem;
+		color: #e6e9f0;
+	}
+	td.mono {
+		font-family: ui-monospace, monospace;
+		font-size: 0.78rem;
+		color: #b8bfd0;
 	}
 </style>
