@@ -101,6 +101,11 @@ dist
 # SvelteKit adapter-static build output (copied into the backend static dir at
 # package build time; never committed).
 frontend/build/
+# The backend static copy destination: keep the dir (via .gitkeep, which the
+# backend relies on existing) but ignore the copied SPA bundle so a stray
+# `git add -A` can't commit build output.
+backend/src/auspexai_researcher_dashboard/static/*
+!backend/src/auspexai_researcher_dashboard/static/.gitkeep
 
 # vitepress build output
 **/.vitepress/dist
