@@ -82,6 +82,9 @@ export interface Experiment {
 	revision?: number;
 	integrity_policy?: string;
 	max_unit_duration_seconds?: number;
+	// M-Results retention state (tenant-scoped).
+	retention_hold?: boolean;
+	results_collected_at?: string;
 }
 
 export interface WorkUnits {
@@ -137,6 +140,49 @@ export interface ExperimentActivity {
 	own_workers?: OwnWorkerActivity[];
 }
 
+// One result in the delivery view (R-D5, coordinator M-Results). The science
+// (payload + semantic_hash) is tenant-scoped; worker identity is stripped
+// coordinator-side. An aged-off row omits `payload` and carries aged_off=true —
+// the receipt + semantic_hash still prove the unit ran.
+export interface ResultItem {
+	result_id?: string;
+	unit_id?: string;
+	completed_at?: string;
+	receipt_id?: string;
+	is_consensus?: boolean;
+	aged_off?: boolean;
+	payload_aged_off_at?: string;
+	semantic_hash?: string;
+	payload?: Record<string, unknown>;
+	worker_signature?: string;
+}
+
+export interface ResultList {
+	results?: ResultItem[];
+	next_cursor?: string | null;
+}
+
+// The offload bundle (coordinator GET .../results/export). Self-contained:
+// consensus payloads + their receipts + the manifest + a coordinator-signed
+// custody record. Collecting it transfers data custody to the researcher.
+export interface ExportBundle {
+	experiment_id?: string;
+	manifest_hash?: string;
+	manifest?: Record<string, unknown> | null;
+	consensus_results?: ResultItem[];
+	receipts?: { receipt_id: string; cose_b64: string }[];
+	transfer?: {
+		transfer_id: string;
+		result_set_root: string;
+		collected_at: string;
+		collected_by_pubkey: string;
+		manifest_hash: string;
+		receipt_count: number;
+		coordinator_signature: string;
+		coordinator_pubkey_hex: string;
+	};
+}
+
 // The confirmed bound identity from the coordinator's /auth/whoami. For a
 // researcher: credential_class="researcher" + their own tenant_id + pubkey_hex.
 export interface WhoAmI {
@@ -175,5 +221,20 @@ export const api = {
 			`/api/v0/experiments/${encodeURIComponent(id)}/actions/finalize-submissions`
 		),
 	abortExperiment: (id: string) =>
-		postJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}/actions/abort`)
+		postJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}/actions/abort`),
+
+	// Results delivery (R-D5). `include` is 'consensus' (default) or 'raw';
+	// `cursor` follows the previous page's next_cursor.
+	getResults: (id: string, opts: { include?: 'consensus' | 'raw'; cursor?: string } = {}) => {
+		const q = new URLSearchParams();
+		if (opts.include) q.set('include', opts.include);
+		if (opts.cursor) q.set('cursor', opts.cursor);
+		const qs = q.toString();
+		return getJson<ResultList>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/results${qs ? `?${qs}` : ''}`
+		);
+	},
+	// The offload bundle. Collecting transfers data custody to the researcher.
+	exportResults: (id: string) =>
+		getJson<ExportBundle>(`/api/v0/experiments/${encodeURIComponent(id)}/results/export`)
 };
