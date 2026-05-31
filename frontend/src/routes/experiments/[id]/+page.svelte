@@ -20,44 +20,77 @@
 	let error = $state<ApiError | null>(null);
 	let loading = $state(true);
 
+	// Lifecycle actions (R-D4): `acting` is the in-flight action name (disables
+	// the row); `confirming` is the destructive action awaiting confirmation;
+	// `actionError` surfaces a refused action (e.g. a `conflict` reason).
+	let acting = $state<string | null>(null);
+	let confirming = $state<string | null>(null);
+	let actionError = $state<ApiError | null>(null);
+
 	const fmt = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
 
-	// Re-fetch whenever the route id changes. Work-units, activity, and receipts
-	// may legitimately be empty (none submitted yet), so each secondary fetch is
-	// non-fatal — only a failure to load the experiment itself is fatal.
+	// Load the experiment + its (independently non-fatal) secondary views. On the
+	// initial/route-change load we show the full loading state; a post-action
+	// refetch is `silent` so the page doesn't flash back to "Loading…".
+	async function load(current: string, opts: { silent?: boolean } = {}) {
+		if (!opts.silent) {
+			loading = true;
+			error = null;
+			experiment = null;
+			workUnits = null;
+			activity = null;
+			receipts = null;
+		}
+		try {
+			experiment = await api.getExperiment(current);
+			try {
+				workUnits = await api.getWorkUnits(current);
+			} catch {
+				/* secondary — keep prior value */
+			}
+			try {
+				activity = await api.getExperimentActivity(current);
+			} catch {
+				/* secondary — keep prior value */
+			}
+			try {
+				receipts = (await api.getExperimentReceipts(current)).receipts ?? [];
+			} catch {
+				/* secondary — keep prior value */
+			}
+		} catch (e) {
+			if (!opts.silent) error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+		} finally {
+			if (!opts.silent) loading = false;
+		}
+	}
+
+	// Run a lifecycle action, then silently refetch so the status badge + fields
+	// reflect the new state. A refused action (conflict / unauthorized) is shown
+	// inline without disturbing the loaded page.
+	async function act(name: string, fn: (id: string) => Promise<unknown>) {
+		const current = id;
+		if (!current || acting) return;
+		acting = name;
+		actionError = null;
+		confirming = null;
+		try {
+			await fn(current);
+			await load(current, { silent: true });
+		} catch (e) {
+			actionError = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+		} finally {
+			acting = null;
+		}
+	}
+
+	// Re-fetch whenever the route id changes.
 	$effect(() => {
 		const current = id;
 		if (!current) return;
-		loading = true;
-		error = null;
-		experiment = null;
-		workUnits = null;
-		activity = null;
-		receipts = null;
-		(async () => {
-			try {
-				experiment = await api.getExperiment(current);
-				try {
-					workUnits = await api.getWorkUnits(current);
-				} catch {
-					workUnits = null;
-				}
-				try {
-					activity = await api.getExperimentActivity(current);
-				} catch {
-					activity = null;
-				}
-				try {
-					receipts = (await api.getExperimentReceipts(current)).receipts ?? [];
-				} catch {
-					receipts = null;
-				}
-			} catch (e) {
-				error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
-			} finally {
-				loading = false;
-			}
-		})();
+		actionError = null;
+		confirming = null;
+		load(current);
 	});
 
 	const counts = $derived(workUnits?.counts_by_status ?? {});
@@ -72,6 +105,17 @@
 				)
 			: 0
 	);
+
+	// Researcher-actionable transitions, gated on the coordinator's transition
+	// map (approve/archive are maintainer-only and intentionally absent).
+	const status = $derived(experiment?.status);
+	const canPause = $derived(status === 'approved');
+	const canResume = $derived(status === 'paused');
+	const canFinalize = $derived(
+		(status === 'approved' || status === 'paused') && !experiment?.submissions_finalized
+	);
+	const canAbort = $derived(status === 'submitted' || status === 'approved' || status === 'paused');
+	const hasActions = $derived(canPause || canResume || canFinalize || canAbort);
 </script>
 
 <p class="back"><a href="/experiments">← My Experiments</a></p>
@@ -86,6 +130,54 @@
 		<StatusBadge status={experiment.status} />
 	</div>
 	<p class="id">{experiment.experiment_id}</p>
+
+	{#if hasActions}
+		<div class="actions">
+			{#if canPause}
+				<button class="act" onclick={() => act('pause', api.pauseExperiment)} disabled={!!acting}>
+					{acting === 'pause' ? 'Pausing…' : 'Pause'}
+				</button>
+			{/if}
+			{#if canResume}
+				<button class="act" onclick={() => act('resume', api.resumeExperiment)} disabled={!!acting}>
+					{acting === 'resume' ? 'Resuming…' : 'Resume'}
+				</button>
+			{/if}
+			{#if canFinalize}
+				{#if confirming === 'finalize'}
+					<span class="confirm">
+						Finalize submissions? No more work units can be added afterward.
+						<button class="act danger" onclick={() => act('finalize', api.finalizeExperiment)} disabled={!!acting}>
+							{acting === 'finalize' ? 'Finalizing…' : 'Confirm'}
+						</button>
+						<button class="act ghost" onclick={() => (confirming = null)} disabled={!!acting}>Cancel</button>
+					</span>
+				{:else}
+					<button class="act" onclick={() => (confirming = 'finalize')} disabled={!!acting}>
+						Finalize submissions
+					</button>
+				{/if}
+			{/if}
+			{#if canAbort}
+				{#if confirming === 'abort'}
+					<span class="confirm">
+						Abort this experiment? This cannot be undone.
+						<button class="act danger" onclick={() => act('abort', api.abortExperiment)} disabled={!!acting}>
+							{acting === 'abort' ? 'Aborting…' : 'Confirm abort'}
+						</button>
+						<button class="act ghost" onclick={() => (confirming = null)} disabled={!!acting}>Cancel</button>
+					</span>
+				{:else}
+					<button class="act danger-outline" onclick={() => (confirming = 'abort')} disabled={!!acting}>
+						Abort
+					</button>
+				{/if}
+			{/if}
+		</div>
+		{#if actionError}
+			<p class="action-error" class:conflict={actionError.kind === 'conflict'}>{actionError.message}</p>
+		{/if}
+	{/if}
 
 	<section class="grid">
 		<div class="field"><span class="k">Submitted</span><span class="v">{fmt(experiment.submitted_at)}</span></div>
@@ -243,6 +335,76 @@
 		font-size: 0.75rem;
 		color: #6b7390;
 		margin: 0.25rem 0 0;
+	}
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 1rem 0 0;
+	}
+	.act {
+		font: inherit;
+		font-size: 0.82rem;
+		padding: 0.4rem 0.8rem;
+		border-radius: 6px;
+		border: 1px solid #2a3550;
+		background: #141b2c;
+		color: #e6e9f0;
+		cursor: pointer;
+	}
+	.act:hover:not(:disabled) {
+		border-color: #4a7dff;
+	}
+	.act:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.act.danger {
+		border-color: #b4434f;
+		background: #b4434f;
+		color: #fff;
+	}
+	.act.danger:hover:not(:disabled) {
+		border-color: #d05561;
+		background: #d05561;
+	}
+	.act.danger-outline {
+		border-color: #7a2e36;
+		background: transparent;
+		color: #f7a6ad;
+	}
+	.act.danger-outline:hover:not(:disabled) {
+		border-color: #b4434f;
+		background: #b4434f;
+		color: #fff;
+	}
+	.act.ghost {
+		background: transparent;
+		border-color: #2a3550;
+		color: #8b93a7;
+	}
+	.confirm {
+		display: inline-flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		font-size: 0.82rem;
+		color: #cbd2e0;
+		background: #0e1424;
+		border: 1px solid #2a3550;
+		border-radius: 6px;
+		padding: 0.35rem 0.6rem;
+	}
+	.action-error {
+		margin: 0.6rem 0 0;
+		font-size: 0.83rem;
+		color: #f7a6ad;
+	}
+	/* A conflict is an expected "can't do that from this state" refusal — amber,
+	   not the red reserved for transport/auth failures. */
+	.action-error.conflict {
+		color: #fbbf24;
 	}
 	.grid {
 		display: grid;

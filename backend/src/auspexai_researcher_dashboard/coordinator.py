@@ -27,9 +27,11 @@ class CoordinatorError(Exception):
     `kind` is one of: ``no_identity`` (no/invalid tenant key on disk),
     ``unauthorized`` (coordinator rejected the signature — key unbound or
     rotated), ``not_found`` (404 — absent or, under tenant-private scoping, not
-    this tenant's), ``unreachable`` (transport error), ``coordinator_error``
-    (any other non-2xx). `http_status` is what the dashboard backend returns to
-    the SPA; `coord_status` is the coordinator's status when there was one.
+    this tenant's), ``conflict`` (409 — a lifecycle action is incompatible with
+    the experiment's current state; carries the coordinator's own reason),
+    ``unreachable`` (transport error), ``coordinator_error`` (any other non-2xx).
+    `http_status` is what the dashboard backend returns to the SPA;
+    `coord_status` is the coordinator's status when there was one.
     """
 
     def __init__(
@@ -47,7 +49,26 @@ class CoordinatorError(Exception):
         self.coord_status = coord_status
 
 
-def _classify_response(status_code: int) -> tuple[str, int, str]:
+def _coord_error_message(response: httpx.Response) -> str | None:
+    """Best-effort extraction of the coordinator's own error message from a
+    failed response. The coordinator raises
+    ``HTTPException(detail={"error": {"code", "message", "details"}})``, which
+    FastAPI serializes under a top-level ``"detail"``. Returns None when the
+    body isn't that shape (so the caller can fall back to a generic message)."""
+    try:
+        body = response.json()
+    except Exception:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    err = detail.get("error") if isinstance(detail, dict) else None
+    if isinstance(err, dict) and isinstance(err.get("message"), str):
+        return err["message"]
+    return None
+
+
+def _classify_response(
+    status_code: int, conflict_message: str | None = None
+) -> tuple[str, int, str]:
     """Map a coordinator HTTP status to (kind, dashboard_http_status, message)."""
     if status_code in (401, 403):
         return (
@@ -59,6 +80,17 @@ def _classify_response(status_code: int) -> tuple[str, int, str]:
         )
     if status_code == 404:
         return ("not_found", 404, "no such experiment for this tenant")
+    if status_code == 409:
+        # A lifecycle action collided with the experiment's current state
+        # (invalid_status_transition / finalize_not_applicable). Surface the
+        # coordinator's own reason so the UI can explain the refusal; fall back
+        # to a generic line if the body wasn't the expected shape.
+        return (
+            "conflict",
+            409,
+            conflict_message
+            or "this action conflicts with the experiment's current state",
+        )
     return ("coordinator_error", 502, f"the coordinator returned HTTP {status_code}")
 
 
@@ -94,6 +126,22 @@ class CoordinatorClient:
             ) from e
         return Rfc9421Auth(key)
 
+    def _raise_for_status(self, response: httpx.Response) -> None:
+        """Raise a classified `CoordinatorError` for any non-2xx response. A 409
+        carries the coordinator's own conflict reason; other statuses use canned
+        messages (404 is deliberately generic — see `_classify_response`)."""
+        if response.status_code < 400:
+            return
+        conflict_message = (
+            _coord_error_message(response) if response.status_code == 409 else None
+        )
+        kind, http_status, message = _classify_response(
+            response.status_code, conflict_message
+        )
+        raise CoordinatorError(
+            kind, message, http_status=http_status, coord_status=response.status_code
+        )
+
     async def get_json(self, path: str) -> object:
         """Sign and GET `path` (a coordinator path, optionally with a query
         string) and return parsed JSON. Raises `CoordinatorError` on failure."""
@@ -110,9 +158,29 @@ class CoordinatorClient:
                 f"could not reach the coordinator at {self._config.coord_url}: {e}",
                 http_status=502,
             ) from e
-        if response.status_code >= 400:
-            kind, http_status, message = _classify_response(response.status_code)
+        self._raise_for_status(response)
+        return response.json()
+
+    async def post_json(self, path: str) -> object:
+        """Sign and POST `path` (a coordinator path; no request body — the
+        lifecycle-action endpoints take none) and return the parsed JSON body
+        (the coordinator returns the updated experiment). Raises
+        `CoordinatorError` on failure; a 409 surfaces the coordinator's own
+        conflict reason. The signature covers @method/@path/@authority (no
+        Content-Digest for an empty body), which is what the coordinator's
+        RFC 9421 verification expects for a bodyless request."""
+        auth = self._auth()
+        url = f"{self._config.coord_url.rstrip('/')}{path}"
+        try:
+            async with httpx.AsyncClient(
+                auth=auth, transport=self._transport, timeout=10.0
+            ) as client:
+                response = await client.post(url)
+        except httpx.HTTPError as e:
             raise CoordinatorError(
-                kind, message, http_status=http_status, coord_status=response.status_code
-            )
+                "unreachable",
+                f"could not reach the coordinator at {self._config.coord_url}: {e}",
+                http_status=502,
+            ) from e
+        self._raise_for_status(response)
         return response.json()
