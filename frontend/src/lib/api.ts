@@ -10,6 +10,7 @@ export type ErrorKind =
 	| 'no_identity'
 	| 'unauthorized'
 	| 'not_found'
+	| 'conflict'
 	| 'unreachable'
 	| 'coordinator_error'
 	| 'client_error';
@@ -26,10 +27,10 @@ export class ApiError extends Error {
 	}
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function request<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
 	let resp: Response;
 	try {
-		resp = await fetch(path);
+		resp = await fetch(path, { method });
 	} catch (e) {
 		throw new ApiError('unreachable', `could not reach the local dashboard backend: ${e}`);
 	}
@@ -48,6 +49,11 @@ async function getJson<T>(path: string): Promise<T> {
 	}
 	return body as T;
 }
+
+const getJson = <T>(path: string): Promise<T> => request<T>(path, 'GET');
+// Lifecycle actions (R-D4): bodyless POSTs. A `conflict`-kind ApiError carries
+// the coordinator's own reason (e.g. "experiment is already completed").
+const postJson = <T>(path: string): Promise<T> => request<T>(path, 'POST');
 
 export type ExperimentStatus =
 	| 'submitted'
@@ -155,5 +161,19 @@ export const api = {
 		),
 	getExperimentActivity: (id: string) =>
 		getJson<ExperimentActivity>(`/api/v0/experiments/${encodeURIComponent(id)}/activity`),
-	whoami: () => getJson<WhoAmI>('/api/v0/auth/whoami')
+	whoami: () => getJson<WhoAmI>('/api/v0/auth/whoami'),
+
+	// Lifecycle actions (R-D4). Each returns the updated Experiment. The
+	// coordinator enforces own-tenant authorization + transition validity; an
+	// invalid action surfaces as a `conflict`-kind ApiError with its real reason.
+	pauseExperiment: (id: string) =>
+		postJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}/actions/pause`),
+	resumeExperiment: (id: string) =>
+		postJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}/actions/resume`),
+	finalizeExperiment: (id: string) =>
+		postJson<Experiment>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/actions/finalize-submissions`
+		),
+	abortExperiment: (id: string) =>
+		postJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}/actions/abort`)
 };
