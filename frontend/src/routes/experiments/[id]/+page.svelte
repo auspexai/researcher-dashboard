@@ -124,6 +124,12 @@
 				<span class="n">{activity.total_work_units ?? 0}</span>
 				<span class="label">work units</span>
 			</div>
+			{#if activity.network_active_workers != null}
+				<div class="count" title="Workers active network-wide (heartbeat-fresh, not retired or quarantined).">
+					<span class="n">{activity.network_active_workers}</span>
+					<span class="label">network workers</span>
+				</div>
+			{/if}
 		</div>
 		{#if activity.replication_target_total}
 			<div class="bar" title="{fillPct}% replicated">
@@ -146,7 +152,7 @@
 			</p>
 			<table class="workers">
 				<thead>
-					<tr><th>Worker</th><th>Tier</th><th>Results</th><th>Last activity</th></tr>
+					<tr><th>Worker</th><th>Tier</th><th>Status</th><th>Results</th><th>Last activity</th></tr>
 				</thead>
 				<tbody>
 					{#each activity.own_workers as w (w.worker_id)}
@@ -156,6 +162,14 @@
 								<span class="mono pk">{w.worker_pubkey_hex.slice(0, 16)}…</span>
 							</td>
 							<td>T{w.trust_tier}</td>
+							<td>
+								<StatusBadge status={w.status} />
+								{#if w.status === 'quarantined' && w.quarantine_reason}
+									<div class="reason" title="Quarantine reason set by the maintainer.">
+										{w.quarantine_reason}
+									</div>
+								{/if}
+							</td>
 							<td>{w.result_count}</td>
 							<td class="muted">{fmt(w.last_activity_at)}</td>
 						</tr>
@@ -359,6 +373,12 @@
 		font-family: ui-monospace, monospace;
 		font-size: 0.7rem;
 		color: #6b7390;
+	}
+	.reason {
+		margin-top: 0.25rem;
+		font-size: 0.74rem;
+		color: #fbbf24;
+		max-width: 22rem;
 	}
 	td.mono {
 		font-family: ui-monospace, monospace;

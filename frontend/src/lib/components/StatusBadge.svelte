@@ -2,6 +2,8 @@
 	let { status }: { status: string | undefined } = $props();
 
 	// Map lifecycle status → a tone class. Unknown statuses fall back to neutral.
+	// Covers both experiment-lifecycle statuses and derived worker statuses
+	// (active/offline/quarantined/retired) — the value sets don't collide.
 	const tone: Record<string, string> = {
 		submitted: 'neutral',
 		approved: 'info',
@@ -9,7 +11,12 @@
 		paused: 'warn',
 		completed: 'ok',
 		aborted: 'bad',
-		archived: 'muted'
+		archived: 'muted',
+		// worker statuses
+		active: 'active',
+		offline: 'muted',
+		quarantined: 'warn',
+		retired: 'muted'
 	};
 	const cls = $derived(tone[status ?? ''] ?? 'neutral');
 </script>

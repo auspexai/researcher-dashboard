@@ -47,6 +47,21 @@
 	Your local, tenant-scoped view of what your research is doing on the AuspexAI network.
 </p>
 
+{#if whoami?.suspended_at}
+	<div class="suspended" role="alert">
+		<strong>Your account is suspended.</strong>
+		{#if whoami.suspension_reason}
+			<span class="why">Reason: {whoami.suspension_reason}</span>
+		{:else}
+			<span class="why">No reason was recorded — contact the operator.</span>
+		{/if}
+		<span class="when">
+			Suspended {whoami.suspended_at.slice(0, 10)}. Your workers are paused and new work is
+			withheld until the suspension is lifted.
+		</span>
+	</div>
+{/if}
+
 {#if healthError}
 	<p class="err">Could not reach the local backend: {healthError}</p>
 {:else if !health}
@@ -109,6 +124,29 @@
 	}
 	.lead {
 		color: #b8bfd0;
+	}
+	.suspended {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		margin: 1rem 0;
+		padding: 0.85rem 1rem;
+		border: 1px solid #7f1d1d;
+		border-left-width: 4px;
+		border-radius: 6px;
+		background: rgba(127, 29, 29, 0.18);
+		color: #fca5a5;
+	}
+	.suspended strong {
+		color: #fecaca;
+		font-size: 0.95rem;
+	}
+	.suspended .why {
+		color: #fca5a5;
+	}
+	.suspended .when {
+		font-size: 0.8rem;
+		color: #e7a3a3;
 	}
 	.grid {
 		display: grid;

@@ -96,12 +96,21 @@ export interface Receipt {
 // own-worker enrichment). Only present for workers bound to the same account as
 // the experiment's tenant; the coordinator strips third-party identities and
 // only sends this to the owning researcher (ACCOUNT_SCOPED).
+// Derived worker status — the coordinator collapses retired/quarantined/
+// heartbeat-recency into one label (retired > quarantined > offline > active).
+export type WorkerStatus = 'active' | 'offline' | 'quarantined' | 'retired';
+
 export interface OwnWorkerActivity {
 	worker_id: string;
 	worker_pubkey_hex: string;
 	result_count: number;
 	trust_tier: number;
 	last_activity_at?: string;
+	// Account-scoped: present only on your own-account workers. `quarantine_reason`
+	// is the maintainer's reason and is non-null only when status is 'quarantined'.
+	status?: WorkerStatus;
+	quarantine_reason?: string | null;
+	last_heartbeat_at?: string;
 }
 
 // Mirrors the coordinator's ExperimentActivityResponse (R-D3). The aggregate
@@ -116,6 +125,9 @@ export interface ExperimentActivity {
 	last_activity_at?: string;
 	completions_total?: number;
 	replication_target_total?: number;
+	// Public, identity-free: total workers active network-wide (heartbeat-fresh,
+	// not retired/quarantined) — the size of the collective backing the network.
+	network_active_workers?: number;
 	own_workers?: OwnWorkerActivity[];
 }
 
@@ -125,6 +137,10 @@ export interface WhoAmI {
 	credential_class: string;
 	tenant_id?: string;
 	pubkey_hex?: string;
+	// Account-scoped: present only when the caller's own account is suspended.
+	// The coordinator surfaces both so the dashboard can explain the pause.
+	suspended_at?: string;
+	suspension_reason?: string | null;
 }
 
 export const api = {
