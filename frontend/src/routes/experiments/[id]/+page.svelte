@@ -6,6 +6,7 @@
 		type Experiment,
 		type ExperimentActivity,
 		type Receipt,
+		type ResultItem,
 		type WorkUnits
 	} from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -27,7 +28,72 @@
 	let confirming = $state<string | null>(null);
 	let actionError = $state<ApiError | null>(null);
 
+	// Results delivery (R-D5). Loaded separately from the experiment so the
+	// consensus/raw toggle + pagination don't refetch the whole page.
+	let results = $state<ResultItem[] | null>(null);
+	let resultsCursor = $state<string | null>(null);
+	let resultsInclude = $state<'consensus' | 'raw'>('consensus');
+	let resultsLoading = $state(false);
+	let resultsError = $state<ApiError | null>(null);
+	let exporting = $state(false);
+	let exportMsg = $state<string | null>(null);
+
 	const fmt = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
+
+	// Fetch a page of results (consensus or raw). `reset` replaces the list and
+	// clears the cursor; otherwise it appends the next page (Load more).
+	async function loadResults(
+		current: string,
+		include: 'consensus' | 'raw',
+		opts: { reset?: boolean } = {}
+	) {
+		if (opts.reset) {
+			results = null;
+			resultsCursor = null;
+			resultsError = null;
+		}
+		resultsLoading = true;
+		try {
+			const page = await api.getResults(current, {
+				include,
+				cursor: opts.reset ? undefined : (resultsCursor ?? undefined)
+			});
+			const items = page.results ?? [];
+			results = opts.reset ? items : [...(results ?? []), ...items];
+			resultsCursor = page.next_cursor ?? null;
+		} catch (e) {
+			if (opts.reset) resultsError = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+		} finally {
+			resultsLoading = false;
+		}
+	}
+
+	// Collect the offload bundle: download it + report the custody transfer.
+	async function doExport() {
+		const current = id;
+		if (!current || exporting) return;
+		exporting = true;
+		exportMsg = null;
+		try {
+			const bundle = await api.exportResults(current);
+			const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `${current}-bundle.json`;
+			a.click();
+			URL.revokeObjectURL(url);
+			const t = bundle.transfer;
+			exportMsg = t
+				? `Collected — data custody transferred to you (transfer ${t.transfer_id}). Saved ${current}-bundle.json.`
+				: `Saved ${current}-bundle.json.`;
+			await load(current, { silent: true }); // refresh results_collected_at
+		} catch (e) {
+			exportMsg = `Export failed: ${e instanceof ApiError ? e.message : String(e)}`;
+		} finally {
+			exporting = false;
+		}
+	}
 
 	// Load the experiment + its (independently non-fatal) secondary views. On the
 	// initial/route-change load we show the full loading state; a post-action
@@ -91,6 +157,15 @@
 		actionError = null;
 		confirming = null;
 		load(current);
+	});
+
+	// Load results on route change or when the consensus/raw toggle flips.
+	$effect(() => {
+		const current = id;
+		const include = resultsInclude;
+		if (!current) return;
+		exportMsg = null;
+		loadResults(current, include, { reset: true });
 	});
 
 	const counts = $derived(workUnits?.counts_by_status ?? {});
@@ -284,6 +359,84 @@
 				</div>
 			{/each}
 		</div>
+	{/if}
+
+	<h2>Results</h2>
+	<div class="results-head">
+		<div class="toggle">
+			<button
+				class="seg"
+				class:active={resultsInclude === 'consensus'}
+				onclick={() => (resultsInclude = 'consensus')}
+			>Consensus</button>
+			<button
+				class="seg"
+				class:active={resultsInclude === 'raw'}
+				onclick={() => (resultsInclude = 'raw')}
+			>All replicas</button>
+		</div>
+		<button
+			class="act"
+			onclick={doExport}
+			disabled={exporting}
+			title="Download the full offload bundle (results + receipts + manifest + signed custody record). Collecting transfers data custody to you."
+		>
+			{exporting ? 'Collecting…' : 'Download bundle'}
+		</button>
+	</div>
+	{#if experiment?.results_collected_at}
+		<p class="muted collected">
+			Collected {fmt(experiment.results_collected_at)} — data custody transferred to you.
+		</p>
+	{/if}
+	{#if exportMsg}
+		<p class="export-msg">{exportMsg}</p>
+	{/if}
+	{#if resultsError}
+		<p class="muted">Results unavailable: {resultsError.message}</p>
+	{:else if results === null && resultsLoading}
+		<p class="muted">Loading results…</p>
+	{:else if results && results.length === 0}
+		<p class="muted">No results yet — they appear as work units reach consensus.</p>
+	{:else if results}
+		<table class="results-tbl">
+			<thead>
+				<tr><th>Unit</th><th>Result</th><th>Payload</th><th>Receipt</th></tr>
+			</thead>
+			<tbody>
+				{#each results as r (r.result_id)}
+					<tr>
+						<td class="mono">
+							{r.unit_id}
+							{#if r.is_consensus}<span class="tag">consensus</span>{/if}
+						</td>
+						<td class="mono pk">{r.result_id}</td>
+						<td>
+							{#if r.aged_off}
+								<span
+									class="aged"
+									title="Payload aged off coordinator-side; the receipt + hash still prove it ran."
+								>aged off</span>
+							{:else if r.payload}
+								<code class="payload">{JSON.stringify(r.payload).slice(0, 100)}</code>
+							{:else}
+								<span class="muted">—</span>
+							{/if}
+						</td>
+						<td class="mono pk">{r.receipt_id ?? '—'}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+		{#if resultsCursor}
+			<button
+				class="act ghost more"
+				onclick={() => id && loadResults(id, resultsInclude)}
+				disabled={resultsLoading}
+			>
+				{resultsLoading ? 'Loading…' : 'Load more'}
+			</button>
+		{/if}
 	{/if}
 
 	<h2>Receipts</h2>
@@ -546,5 +699,89 @@
 		font-family: ui-monospace, monospace;
 		font-size: 0.78rem;
 		color: #b8bfd0;
+	}
+	/* ── Results (R-D5) ── */
+	.results-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0.5rem 0;
+	}
+	.toggle {
+		display: inline-flex;
+		border: 1px solid #2a3550;
+		border-radius: 6px;
+		overflow: hidden;
+	}
+	.seg {
+		font: inherit;
+		font-size: 0.78rem;
+		padding: 0.35rem 0.7rem;
+		background: #0e1424;
+		color: #8b93a7;
+		border: none;
+		cursor: pointer;
+	}
+	.seg.active {
+		background: #1f2a44;
+		color: #e6e9f0;
+	}
+	.collected {
+		color: #7fd1a8;
+		margin: 0.2rem 0;
+	}
+	.export-msg {
+		font-size: 0.83rem;
+		color: #8bd0a8;
+		margin: 0.4rem 0;
+	}
+	table.results-tbl {
+		width: 100%;
+		border-collapse: collapse;
+		margin-top: 0.5rem;
+	}
+	table.results-tbl th {
+		text-align: left;
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: #8b93a7;
+		padding: 0.4rem 0.6rem;
+		border-bottom: 1px solid #1e2638;
+	}
+	table.results-tbl td {
+		padding: 0.4rem 0.6rem;
+		border-bottom: 1px solid #141b2c;
+		font-size: 0.82rem;
+		color: #e6e9f0;
+		vertical-align: top;
+	}
+	.tag {
+		display: inline-block;
+		margin-left: 0.4rem;
+		font-family: system-ui, sans-serif;
+		font-size: 0.6rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #7aa2ff;
+		background: #16203a;
+		border: 1px solid #2a3550;
+		border-radius: 4px;
+		padding: 0.05rem 0.3rem;
+	}
+	.aged {
+		font-size: 0.74rem;
+		color: #fbbf24;
+	}
+	.payload {
+		font-family: ui-monospace, monospace;
+		font-size: 0.74rem;
+		color: #8b93a7;
+		word-break: break-all;
+	}
+	.more {
+		margin-top: 0.6rem;
 	}
 </style>

@@ -91,6 +91,25 @@ def build_api_router() -> APIRouter:
         timestamp, replication fill. Aggregates only — no worker identities."""
         return await _proxy(request, f"/api/v0/experiments/{experiment_id}/activity")
 
+    # ── Results delivery (R-D5, consumes coordinator M-Results) ───────────────
+
+    @router.get("/experiments/{experiment_id}/results")
+    async def list_experiment_results(request: Request, experiment_id: str) -> JSONResponse:
+        """The researcher's actual computed outputs (R-D5). Default = the T-C
+        consensus payload per unit; `?include=raw` adds replicas; paginated via
+        `?cursor=`. Worker identity is stripped coordinator-side (ACCOUNT_SCOPED);
+        the science (payload + semantic_hash) is tenant-scoped. The query string
+        is forwarded by `_proxy`."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/results")
+
+    @router.get("/experiments/{experiment_id}/results/export")
+    async def export_experiment_results(request: Request, experiment_id: str) -> JSONResponse:
+        """Collect the offload bundle (consensus payloads + receipts + manifest +
+        a signed custody record). Collecting stamps `results_collected_at`
+        coordinator-side and transfers data custody to the researcher — so the SPA
+        gates this behind an explicit action."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/results/export")
+
     # ── Lifecycle actions (R-D4) ─────────────────────────────────────────────
     # The four researcher-actionable transitions. approve/archive stay
     # maintainer-only (operator console), so they are deliberately absent here.
