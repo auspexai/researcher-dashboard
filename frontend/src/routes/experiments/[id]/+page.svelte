@@ -182,7 +182,9 @@
 	);
 
 	// Researcher-actionable transitions, gated on the coordinator's transition
-	// map (approve/archive are maintainer-only and intentionally absent).
+	// map (approve/archive are maintainer-only and intentionally absent). These
+	// `can*` predicates are the source-of-truth ENABLE conditions — they mirror
+	// the coordinator, so a disabled action clicked anyway would come back 409.
 	const status = $derived(experiment?.status);
 	const canPause = $derived(status === 'approved');
 	const canResume = $derived(status === 'paused');
@@ -190,7 +192,25 @@
 		(status === 'approved' || status === 'paused') && !experiment?.submissions_finalized
 	);
 	const canAbort = $derived(status === 'submitted' || status === 'approved' || status === 'paused');
-	const hasActions = $derived(canPause || canResume || canFinalize || canAbort);
+
+	// Terminal experiments will never be actionable again, so we hide the bar
+	// entirely — a row of permanently-dead buttons is noise. Non-terminal states
+	// show all four actions in a fixed order (stable layout), disabling the
+	// currently-inapplicable ones with a reason so the lifecycle vocabulary stays
+	// discoverable instead of appearing only once the right state is reached.
+	const terminal = $derived(
+		status === 'completed' || status === 'aborted' || status === 'archived'
+	);
+
+	// Why a disabled action is unavailable — surfaced inline on the button (and
+	// as its title). Only read on the `{:else}` branch, i.e. when the matching
+	// `can*` is false, so each need only explain its own not-enabled states.
+	const pauseReason = $derived(status === 'paused' ? 'already paused' : 'only while approved');
+	const resumeReason = $derived(status === 'approved' ? 'after pausing' : 'only while paused');
+	const finalizeReason = $derived(
+		experiment?.submissions_finalized ? 'already finalized' : 'available once approved'
+	);
+	const abortReason = 'not available in this state';
 </script>
 
 <p class="back"><a href="/experiments">← My Experiments</a></p>
@@ -206,18 +226,34 @@
 	</div>
 	<p class="id">{experiment.experiment_id}</p>
 
-	{#if hasActions}
+	<!-- A state-unavailable action: shown disabled with the reason it's not
+	     usable yet, so the full lifecycle vocabulary stays discoverable. -->
+	{#snippet unavailable(label: string, reason: string, variant: string)}
+		<button class="act {variant}" disabled title="Unavailable — {reason}.">
+			{label}<span class="why"> — {reason}</span>
+		</button>
+	{/snippet}
+
+	{#if terminal}
+		<p class="no-actions">No actions available — experiment is {experiment.status}.</p>
+	{:else}
 		<div class="actions">
 			{#if canPause}
 				<button class="act" onclick={() => act('pause', api.pauseExperiment)} disabled={!!acting}>
 					{acting === 'pause' ? 'Pausing…' : 'Pause'}
 				</button>
+			{:else}
+				{@render unavailable('Pause', pauseReason, '')}
 			{/if}
+
 			{#if canResume}
 				<button class="act" onclick={() => act('resume', api.resumeExperiment)} disabled={!!acting}>
 					{acting === 'resume' ? 'Resuming…' : 'Resume'}
 				</button>
+			{:else}
+				{@render unavailable('Resume', resumeReason, '')}
 			{/if}
+
 			{#if canFinalize}
 				{#if confirming === 'finalize'}
 					<span class="confirm">
@@ -232,7 +268,10 @@
 						Finalize submissions
 					</button>
 				{/if}
+			{:else}
+				{@render unavailable('Finalize submissions', finalizeReason, '')}
 			{/if}
+
 			{#if canAbort}
 				{#if confirming === 'abort'}
 					<span class="confirm">
@@ -247,6 +286,8 @@
 						Abort
 					</button>
 				{/if}
+			{:else}
+				{@render unavailable('Abort', abortReason, 'danger-outline')}
 			{/if}
 		</div>
 		{#if actionError}
@@ -511,7 +552,18 @@
 	}
 	.act:disabled {
 		opacity: 0.5;
-		cursor: default;
+		cursor: not-allowed;
+	}
+	/* The inline reason on a state-unavailable action. */
+	.why {
+		font-style: italic;
+		font-weight: 400;
+	}
+	/* Terminal experiments: a single muted line in place of the action bar. */
+	.no-actions {
+		margin: 1rem 0 0;
+		font-size: 0.83rem;
+		color: #6b7390;
 	}
 	.act.danger {
 		border-color: #b4434f;
