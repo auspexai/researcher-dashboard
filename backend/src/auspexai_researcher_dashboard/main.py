@@ -74,7 +74,7 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
                 "status": "ok",
                 "version": __version__,
                 "server_time": now,
-                "phase": "R-D2.5 (identity)",
+                "phase": "R-D5 (results retrieval + lifecycle actions)",
                 "coord": {
                     "url": config.coord_url,
                     "reachable": coord_ok,
