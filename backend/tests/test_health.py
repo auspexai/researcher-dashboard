@@ -31,7 +31,9 @@ def test_health_reports_version_and_phase(tmp_path: Path) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "ok"
-    assert body["phase"].startswith("R-D2")
+    # Assert the phase field is present and non-empty, not a frozen milestone
+    # string — pinning the exact milestone makes this break on every bump.
+    assert isinstance(body["phase"], str) and body["phase"]
     # Coordinator unreachable → reachable is False, not an exception.
     assert body["coord"]["reachable"] is False
 
@@ -98,7 +100,7 @@ def test_health_exposes_local_pubkey_with_real_key(tmp_path: Path) -> None:
     body = TestClient(create_app(config)).get("/api/v0/health").json()
     assert body["identity"]["key_present"] is True
     assert body["identity"]["pubkey_hex"] == key.pubkey_hex
-    assert body["phase"].startswith("R-D2.5")
+    assert isinstance(body["phase"], str) and body["phase"]
 
 
 def test_health_surfaces_full_package_version(tmp_path: Path) -> None:
