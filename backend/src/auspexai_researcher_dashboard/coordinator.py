@@ -161,21 +161,23 @@ class CoordinatorClient:
         self._raise_for_status(response)
         return response.json()
 
-    async def post_json(self, path: str) -> object:
-        """Sign and POST `path` (a coordinator path; no request body — the
-        lifecycle-action endpoints take none) and return the parsed JSON body
-        (the coordinator returns the updated experiment). Raises
+    async def post_json(self, path: str, body: dict | None = None) -> object:
+        """Sign and POST `path` and return the parsed JSON body. Raises
         `CoordinatorError` on failure; a 409 surfaces the coordinator's own
-        conflict reason. The signature covers @method/@path/@authority (no
-        Content-Digest for an empty body), which is what the coordinator's
-        RFC 9421 verification expects for a bodyless request."""
+        conflict reason. Bodyless (the lifecycle actions): the signature
+        covers @method/@path/@authority. With `body` (the demand-board
+        submits): `Rfc9421Auth` adds + covers Content-Digest automatically,
+        matching the coordinator's RFC 9421 verification for a JSON body."""
         auth = self._auth()
         url = f"{self._config.coord_url.rstrip('/')}{path}"
         try:
             async with httpx.AsyncClient(
                 auth=auth, transport=self._transport, timeout=10.0
             ) as client:
-                response = await client.post(url)
+                if body is None:
+                    response = await client.post(url)
+                else:
+                    response = await client.post(url, json=body)
         except httpx.HTTPError as e:
             raise CoordinatorError(
                 "unreachable",

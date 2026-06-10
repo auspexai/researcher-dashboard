@@ -27,10 +27,19 @@ export class ApiError extends Error {
 	}
 }
 
-async function request<T>(path: string, method: 'GET' | 'POST'): Promise<T> {
+async function request<T>(path: string, method: 'GET' | 'POST', payload?: unknown): Promise<T> {
 	let resp: Response;
 	try {
-		resp = await fetch(path, { method });
+		resp = await fetch(
+			path,
+			payload === undefined
+				? { method }
+				: {
+						method,
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(payload)
+					}
+		);
 	} catch (e) {
 		throw new ApiError('unreachable', `could not reach the local dashboard backend: ${e}`);
 	}
@@ -54,6 +63,10 @@ const getJson = <T>(path: string): Promise<T> => request<T>(path, 'GET');
 // Lifecycle actions (R-D4): bodyless POSTs. A `conflict`-kind ApiError carries
 // the coordinator's own reason (e.g. "experiment is already completed").
 const postJson = <T>(path: string): Promise<T> => request<T>(path, 'POST');
+// Demand-board submits (R-D6): POSTs WITH a JSON body, forwarded verbatim to
+// the coordinator (which validates the shape and owns authorization).
+const postJsonBody = <T>(path: string, payload: unknown): Promise<T> =>
+	request<T>(path, 'POST', payload);
 
 export type ExperimentStatus =
 	| 'submitted'
@@ -195,6 +208,45 @@ export interface WhoAmI {
 	suspension_reason?: string | null;
 }
 
+// ── Demand board (R-D6, §9 #46) ────────────────────────────────────────────
+
+export interface CatalogEntry {
+	model_id: string;
+	worker_count: number;
+}
+
+export interface ModelRequest {
+	request_id: string;
+	model_id: string;
+	hf_repo: string | null;
+	reason: string;
+	status: 'available' | 'pending' | 'fulfilled' | 'declined' | string;
+	created_at: string;
+	resolved_by: string | null;
+	resolution_reason: string | null;
+}
+
+export interface Assessment {
+	dependencies: string;
+	security: string;
+	alternatives: string;
+	summary: string | null;
+}
+
+export interface SoftwareRequest {
+	request_id: string;
+	title: string;
+	description: string;
+	reason: string;
+	status: 'pending' | 'assessed' | 'approved' | 'declined' | 'released' | string;
+	created_at: string;
+	assessment: Assessment | null;
+	assessment_draft: boolean;
+	resolved_by: string | null;
+	resolution_reason: string | null;
+	release_version: string | null;
+}
+
 export const api = {
 	listExperiments: () => getJson<{ experiments?: Experiment[] }>('/api/v0/experiments'),
 	getExperiment: (id: string) =>
@@ -236,5 +288,18 @@ export const api = {
 	},
 	// The offload bundle. Collecting transfers data custody to the researcher.
 	exportResults: (id: string) =>
-		getJson<ExportBundle>(`/api/v0/experiments/${encodeURIComponent(id)}/results/export`)
+		getJson<ExportBundle>(`/api/v0/experiments/${encodeURIComponent(id)}/results/export`),
+
+	// Demand board (R-D6, §9 #46): the researcher's push surface. GET lists are
+	// tenant-scoped coordinator-side; submits enter the maintainer review queue.
+	getCatalog: () =>
+		getJson<{ models?: CatalogEntry[]; total_active_workers?: number }>('/api/v0/catalog'),
+	listModelRequests: () =>
+		getJson<{ requests?: ModelRequest[] }>('/api/v0/model-requests'),
+	createModelRequest: (body: { model_id: string; reason: string; hf_repo?: string }) =>
+		postJsonBody<ModelRequest>('/api/v0/model-requests', body),
+	listSoftwareRequests: () =>
+		getJson<{ requests?: SoftwareRequest[] }>('/api/v0/software-requests'),
+	createSoftwareRequest: (body: { title: string; description: string; reason: string }) =>
+		postJsonBody<SoftwareRequest>('/api/v0/software-requests', body)
 };

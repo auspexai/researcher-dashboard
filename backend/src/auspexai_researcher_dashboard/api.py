@@ -139,6 +139,62 @@ def build_api_router() -> APIRouter:
         """Abort my experiment (→ aborted). Terminal — the SPA confirm-gates it."""
         return await _proxy_post(request, f"/api/v0/experiments/{experiment_id}/actions/abort")
 
+    # ── Demand board: model + software requests (R-D6, §9 #46) ───────────────
+    # The researcher's "push" surface: signal demand the network can't meet
+    # (a model nobody serves; a worker-baseline capability that doesn't exist)
+    # and track each request through assessment → resolution → release. The
+    # coordinator tenant-scopes the GET lists to the signing credential.
+
+    async def _proxy_post_body(request: Request, path: str) -> JSONResponse:
+        # Demand-board submits: signed POST WITH a JSON body (Rfc9421Auth adds
+        # + covers Content-Digest). The body passes through verbatim — the
+        # coordinator validates the shape (422) and owns authorization.
+        try:
+            body = await request.json()
+        except Exception:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": {
+                        "kind": "bad_request",
+                        "message": "request body must be JSON",
+                        "coordinator_status": None,
+                    }
+                },
+            )
+        try:
+            data = await _client(request).post_json(path, body=body)
+        except CoordinatorError as e:
+            return _envelope(e)
+        return JSONResponse(content=data)
+
+    @router.get("/catalog")
+    async def get_catalog(request: Request) -> JSONResponse:
+        """The network's bottom-up model catalog (what active workers can run)."""
+        return await _proxy(request, "/api/v0/models/catalog")
+
+    @router.get("/model-requests")
+    async def list_model_requests(request: Request) -> JSONResponse:
+        """My model requests (tenant-scoped coordinator-side)."""
+        return await _proxy(request, "/api/v0/model-requests")
+
+    @router.post("/model-requests")
+    async def create_model_request(request: Request) -> JSONResponse:
+        """Signal demand for a model (BYOM): {model_id, reason, hf_repo?}."""
+        return await _proxy_post_body(request, "/api/v0/model-requests")
+
+    @router.get("/software-requests")
+    async def list_software_requests(request: Request) -> JSONResponse:
+        """My software requests, incl. assessment + resolution + the fulfilling
+        release_version (tenant-scoped coordinator-side)."""
+        return await _proxy(request, "/api/v0/software-requests")
+
+    @router.post("/software-requests")
+    async def create_software_request(request: Request) -> JSONResponse:
+        """Signal demand for a worker-baseline capability (code plane):
+        {title, description, reason}. Always enters the maintainer review queue."""
+        return await _proxy_post_body(request, "/api/v0/software-requests")
+
     @router.get("/auth/whoami")
     async def whoami(request: Request) -> JSONResponse:
         """The *confirmed bound* identity: the coordinator resolves the signing
