@@ -1,0 +1,203 @@
+name: Release
+
+# Fires on version tags (e.g., v0.1.7). The tag is the trigger; the Maintainer
+# pushes it from a state where main-branch CI was green (GOVERNANCE §3.5:
+# release authority on researcher-installed repositories is Maintainer-only,
+# and PyPI publication rides this same gate via trusted publishing).
+#
+# Outputs a GitHub release with:
+#   - auspexai_researcher_dashboard-<version>-py3-none-any.whl
+#     (the SPA is BUILT AND EMBEDDED — a wheel installed from here serves the
+#     full UI; wheel-only on purpose: an sdist built without the frontend
+#     toolchain would install a UI-less dashboard)
+#   - <artifact>.sig + <artifact>.cert (Sigstore keyless via GitHub OIDC)
+#   - SHA256SUMS
+# plus, when the PYPI_ENABLED repo variable is "true", a PyPI publish via
+# trusted publishing (no long-lived credentials).
+#
+# Trust path: auspexai/.github/security/AUTHORIZED_SIGNERS.md.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # create the GitHub release + upload assets
+  id-token: write   # OIDC for Sigstore keyless signing
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, sign, and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source at tag
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: latest
+
+      - name: Build the SPA
+        working-directory: frontend
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm run check
+          pnpm run build
+
+      - name: Embed the SPA into the backend package
+        run: |
+          cp -r frontend/build/. backend/src/auspexai_researcher_dashboard/static/
+          test -f backend/src/auspexai_researcher_dashboard/static/index.html
+          test -d backend/src/auspexai_researcher_dashboard/static/_app
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Build wheel (SPA embedded)
+        working-directory: backend
+        run: |
+          uv build --wheel -o ../dist
+          ls -la ../dist/
+
+      - name: Guard — version is a clean release matching the tag, SPA embedded
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          WHEEL=$(ls dist/auspexai_researcher_dashboard-*.whl)
+          BUILT_VERSION=$(basename "$WHEEL" | cut -d- -f2)
+          echo "tag=$TAG_VERSION  built=$BUILT_VERSION"
+          if [ "$BUILT_VERSION" = "0.0.0" ] || ! printf '%s' "$BUILT_VERSION" | grep -qE '^[0-9]+(\.[0-9]+)+$'; then
+            echo "::error::built version '$BUILT_VERSION' is not a clean release."
+            exit 1
+          fi
+          if [ "$BUILT_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::built version '$BUILT_VERSION' != tag '$TAG_VERSION'."
+            exit 1
+          fi
+          python3 -c "
+          import sys, zipfile
+          names = zipfile.ZipFile('$WHEEL').namelist()
+          ok = any(n.endswith('static/index.html') for n in names) and any('/static/_app/' in n for n in names)
+          sys.exit(0 if ok else 1)
+          " || { echo "::error::wheel does not contain the embedded SPA"; exit 1; }
+          echo "version=$TAG_VERSION" >> "$GITHUB_ENV"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.5.0'
+
+      - name: Sign artifacts (Sigstore keyless via GitHub OIDC)
+        run: |
+          for artifact in dist/auspexai_researcher_dashboard-*.whl; do
+            cosign sign-blob --yes \
+              --output-signature "$artifact.sig" \
+              --output-certificate "$artifact.cert" \
+              "$artifact"
+          done
+          ls -la dist/
+
+      - name: Compute SHA256SUMS
+        run: |
+          (cd dist && sha256sum auspexai* | grep -vE '\.(sig|cert)$' > SHA256SUMS)
+          cat dist/SHA256SUMS
+
+      - name: Verify own signatures (self-check)
+        run: |
+          for artifact in dist/auspexai_researcher_dashboard-*.whl; do
+            cosign verify-blob \
+              --certificate-identity-regexp='^https://github\.com/auspexai/.+/\.github/workflows/.+@.+$' \
+              --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+              --signature "$artifact.sig" \
+              --certificate "$artifact.cert" \
+              "$artifact"
+          done
+
+      - name: Upload dist for the PyPI job
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/*.whl
+          retention-days: 7
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: ${{ env.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/auspexai_researcher_dashboard-*.whl
+            dist/*.sig
+            dist/*.cert
+            dist/SHA256SUMS
+          body: |
+            AuspexAI Researcher Dashboard ${{ env.version }} — your local,
+            tenant-scoped view of what your research is doing on the network.
+            The web UI is embedded; no frontend build needed.
+
+            ## Install
+
+            ```bash
+            pip install auspexai_researcher_dashboard-${{ env.version }}-py3-none-any.whl
+            auspexai-dashboard serve
+            ```
+
+            (Requires `auspexai-tenant` — installed automatically from PyPI
+            once publishing is live; until then install it first from its own
+            release page.)
+
+            ## Verify before installing
+
+            ```bash
+            cosign verify-blob \
+              --certificate-identity-regexp='^https://github\.com/auspexai/.+/\.github/workflows/.+@.+$' \
+              --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+              --signature auspexai_researcher_dashboard-${{ env.version }}-py3-none-any.whl.sig \
+              --certificate auspexai_researcher_dashboard-${{ env.version }}-py3-none-any.whl.cert \
+              auspexai_researcher_dashboard-${{ env.version }}-py3-none-any.whl
+            ```
+
+            Trust roster: [AUTHORIZED_SIGNERS.md](https://github.com/auspexai/.github/blob/main/security/AUTHORIZED_SIGNERS.md).
+
+  pypi:
+    name: Publish to PyPI (trusted publishing)
+    needs: release
+    if: vars.PYPI_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: pypi
+    permissions:
+      id-token: write   # OIDC trusted publishing — no stored credentials
+
+    steps:
+      - name: Download built wheel
+        uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
