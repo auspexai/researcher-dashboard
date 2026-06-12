@@ -104,11 +104,27 @@ def build_api_router() -> APIRouter:
 
     @router.get("/experiments/{experiment_id}/results/export")
     async def export_experiment_results(request: Request, experiment_id: str) -> JSONResponse:
-        """Collect the offload bundle (consensus payloads + receipts + manifest +
-        a signed custody record). Collecting stamps `results_collected_at`
-        coordinator-side and transfers data custody to the researcher — so the SPA
-        gates this behind an explicit action."""
+        """Collect the evidence bundle (EB-1: consensus payloads + work-unit
+        inputs + worker signatures + receipts + manifest + the result-set
+        attestation with its Rekor anchor + a signed custody record). Collecting
+        stamps `results_collected_at` coordinator-side and transfers data
+        custody to the researcher — so the SPA gates this behind an explicit
+        action. A 409 (`conflict`) here is the verify-on-export tamper alarm:
+        the coordinator refused to sign custody over a set that no longer
+        reproduces the attested root."""
         return await _proxy(request, f"/api/v0/experiments/{experiment_id}/results/export")
+
+    @router.get("/experiments/{experiment_id}/attestation")
+    async def get_experiment_attestation(request: Request, experiment_id: str) -> JSONResponse:
+        """The result-set attestation for one of my experiments (integrity
+        panel, R-D inc-1): the COSE-signed in-toto statement over the merkle
+        root of the consensus set, plus its Rekor anchor (log index / entry
+        uuid / inclusion proof) once the hourly sweep has anchored it. The
+        final attestation is persisted + canonical; `?checkpoint=true`
+        (forwarded by `_proxy`) returns a partial consensus-so-far attestation
+        for a not-yet-completed experiment. A 425 comes back as a `not_ready`
+        envelope, not an error."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/attestation")
 
     # ── Lifecycle actions (R-D4) ─────────────────────────────────────────────
     # The four researcher-actionable transitions. approve/archive stay

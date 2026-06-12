@@ -11,6 +11,7 @@ export type ErrorKind =
 	| 'unauthorized'
 	| 'not_found'
 	| 'conflict'
+	| 'not_ready'
 	| 'unreachable'
 	| 'coordinator_error'
 	| 'client_error';
@@ -156,7 +157,9 @@ export interface ExperimentActivity {
 // One result in the delivery view (R-D5, coordinator M-Results). The science
 // (payload + semantic_hash) is tenant-scoped; worker identity is stripped
 // coordinator-side. An aged-off row omits `payload` and carries aged_off=true —
-// the receipt + semantic_hash still prove the unit ran.
+// the receipt + semantic_hash still prove the unit ran. In the evidence bundle
+// (EB-1) each row also carries the worker's signature members: the pubkey is a
+// pseudonymous verification handle, not an identity.
 export interface ResultItem {
 	result_id?: string;
 	unit_id?: string;
@@ -168,6 +171,9 @@ export interface ResultItem {
 	semantic_hash?: string;
 	payload?: Record<string, unknown>;
 	worker_signature?: string;
+	worker_pubkey_hex?: string;
+	exit_code?: number;
+	environment?: Record<string, unknown>;
 }
 
 export interface ResultList {
@@ -175,18 +181,57 @@ export interface ResultList {
 	next_cursor?: string | null;
 }
 
-// The offload bundle (coordinator GET .../results/export). Self-contained:
-// consensus payloads + their receipts + the manifest + a coordinator-signed
-// custody record. Collecting it transfers data custody to the researcher.
+// The result-set attestation (coordinator GET .../attestation; integrity
+// panel, R-D inc-1): a COSE-signed in-toto statement over the merkle root of
+// the experiment's consensus set, plus its Rekor transparency-log anchor once
+// the hourly sweep has anchored it. `partial` marks a mid-run checkpoint
+// (consensus-so-far) rather than the final persisted attestation.
+export interface Attestation {
+	attestation_id?: string;
+	experiment_id?: string;
+	tenant_id?: string;
+	merkle_root?: string;
+	algorithm?: string;
+	unit_count?: number;
+	units?: { unit_id: string; consensus_result_hash?: string }[];
+	cose_b64?: string;
+	signing_key_pubkey_hex?: string;
+	rekor_log_index?: number | null;
+	rekor_entry_uuid?: string | null;
+	rekor_inclusion_proof?: Record<string, unknown> | null;
+	partial?: boolean;
+}
+
+// The evidence bundle (coordinator GET .../results/export; EB-1, §9 #47).
+// Self-contained and offline-verifiable: consensus payloads + worker
+// signatures + work-unit inputs + receipts + the manifest + the result-set
+// attestation with its Rekor anchor + a coordinator-signed custody record.
+// Collecting it transfers data custody to the researcher; for a COMPLETED
+// experiment the custody record signs the attestation's merkle root
+// (root_kind 'result-set/v1' — one root binds data ↔ custody ↔ Rekor).
 export interface ExportBundle {
+	schema?: string;
 	experiment_id?: string;
 	manifest_hash?: string;
 	manifest?: Record<string, unknown> | null;
+	work_units?: { unit_id: string; payload: Record<string, unknown> }[];
 	consensus_results?: ResultItem[];
 	receipts?: { receipt_id: string; cose_b64: string }[];
+	attestation?: {
+		attestation_id: string;
+		merkle_root: string;
+		algorithm: string;
+		cose_b64: string;
+		signing_key_pubkey_hex: string;
+		rekor_log_index: number | null;
+		rekor_entry_uuid: string | null;
+		rekor_inclusion_proof: Record<string, unknown> | null;
+	} | null;
 	transfer?: {
 		transfer_id: string;
 		result_set_root: string;
+		root_kind?: string;
+		attestation_id?: string | null;
 		collected_at: string;
 		collected_by_pubkey: string;
 		manifest_hash: string;
@@ -286,9 +331,23 @@ export const api = {
 			`/api/v0/experiments/${encodeURIComponent(id)}/results${qs ? `?${qs}` : ''}`
 		);
 	},
-	// The offload bundle. Collecting transfers data custody to the researcher.
+	// The evidence bundle (EB-1). Collecting transfers data custody to the
+	// researcher. A `conflict` ApiError here is the verify-on-export tamper
+	// alarm — the coordinator refused to sign custody over a set that fails
+	// verification.
 	exportResults: (id: string) =>
 		getJson<ExportBundle>(`/api/v0/experiments/${encodeURIComponent(id)}/results/export`),
+
+	// The result-set attestation (integrity panel, R-D inc-1). Final for a
+	// completed experiment; `checkpoint: true` asks for a partial
+	// consensus-so-far attestation mid-run. A `not_ready` ApiError means the
+	// final attestation isn't available yet (experiment not completed).
+	getAttestation: (id: string, opts: { checkpoint?: boolean } = {}) =>
+		getJson<Attestation>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/attestation${
+				opts.checkpoint ? '?checkpoint=true' : ''
+			}`
+		),
 
 	// Demand board (R-D6, §9 #46): the researcher's push surface. GET lists are
 	// tenant-scoped coordinator-side; submits enter the maintainer review queue.

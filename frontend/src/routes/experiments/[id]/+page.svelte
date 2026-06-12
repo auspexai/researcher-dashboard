@@ -3,6 +3,7 @@
 	import {
 		api,
 		ApiError,
+		type Attestation,
 		type Experiment,
 		type ExperimentActivity,
 		type Receipt,
@@ -27,6 +28,13 @@
 	let acting = $state<string | null>(null);
 	let confirming = $state<string | null>(null);
 	let actionError = $state<ApiError | null>(null);
+
+	// Integrity panel (R-D inc-1). The final attestation auto-loads for a
+	// completed experiment; mid-run, a checkpoint attestation is fetched only on
+	// explicit request (it's rebuilt on demand coordinator-side).
+	let attestation = $state<Attestation | null>(null);
+	let attestationError = $state<ApiError | null>(null);
+	let attestationLoading = $state(false);
 
 	// Results delivery (R-D5). Loaded separately from the experiment so the
 	// consensus/raw toggle + pagination don't refetch the whole page.
@@ -68,6 +76,21 @@
 		}
 	}
 
+	// Fetch the result-set attestation. Final for a completed experiment;
+	// `checkpoint` asks for a partial consensus-so-far attestation mid-run.
+	async function loadAttestation(current: string, opts: { checkpoint?: boolean } = {}) {
+		attestationLoading = true;
+		attestationError = null;
+		try {
+			attestation = await api.getAttestation(current, opts);
+		} catch (e) {
+			attestation = null;
+			attestationError = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+		} finally {
+			attestationLoading = false;
+		}
+	}
+
 	// Collect the offload bundle: download it + report the custody transfer.
 	async function doExport() {
 		const current = id;
@@ -84,8 +107,11 @@
 			a.click();
 			URL.revokeObjectURL(url);
 			const t = bundle.transfer;
+			const unified = t?.root_kind?.startsWith('result-set');
 			exportMsg = t
-				? `Collected — data custody transferred to you (transfer ${t.transfer_id}). Saved ${current}-bundle.json.`
+				? `Collected — data custody transferred to you (transfer ${t.transfer_id}${
+						unified ? '; custody signs the attested merkle root' : ''
+					}). Saved ${current}-bundle.json — re-verify it offline anytime with: auspexai-tenant bundle verify ${current}-bundle.json`
 				: `Saved ${current}-bundle.json.`;
 			await load(current, { silent: true }); // refresh results_collected_at
 		} catch (e) {
@@ -123,6 +149,14 @@
 				receipts = (await api.getExperimentReceipts(current)).receipts ?? [];
 			} catch {
 				/* secondary — keep prior value */
+			}
+			// The final attestation exists only once COMPLETED (it is persisted
+			// + canonical there). Mid-run the panel offers a checkpoint instead.
+			if (experiment?.status === 'completed') {
+				await loadAttestation(current);
+			} else if (!opts.silent) {
+				attestation = null;
+				attestationError = null;
 			}
 		} catch (e) {
 			if (!opts.silent) error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
@@ -314,6 +348,103 @@
 			</div>
 		{/if}
 	</section>
+
+	<h2>Integrity</h2>
+	{#if attestationLoading}
+		<p class="muted">Loading attestation…</p>
+	{:else if attestation}
+		<p class="att-status" class:partial={attestation.partial}>
+			{#if attestation.partial}
+				Checkpoint attestation — partial, over the consensus-so-far set. The final
+				attestation is issued when the experiment completes.
+			{:else}
+				Final result-set attestation — persisted and canonical. The signed merkle root
+				covers every consensus unit; your evidence bundle verifies against it.
+			{/if}
+		</p>
+		<section class="grid">
+			<div class="field">
+				<span class="k">Attestation</span>
+				<span class="v mono">{attestation.attestation_id ?? '— (checkpoint, unpersisted)'}</span>
+			</div>
+			<div class="field">
+				<span class="k">Algorithm · units</span>
+				<span class="v">{attestation.algorithm ?? '—'} · {attestation.unit_count ?? 0}</span>
+			</div>
+			<div class="field">
+				<span class="k">Rekor anchor</span>
+				<span class="v">
+					{#if attestation.rekor_log_index != null}
+						<a
+							class="rekor"
+							href="https://search.sigstore.dev/?logIndex={attestation.rekor_log_index}"
+							target="_blank"
+							rel="noopener noreferrer"
+							title="View this attestation's entry in the public Sigstore transparency log."
+						>log index {attestation.rekor_log_index} ↗</a>
+						{#if attestation.rekor_inclusion_proof}
+							<span class="proof" title="The RFC 6962 inclusion proof is captured in your evidence bundle for offline verification.">inclusion proof captured</span>
+						{/if}
+					{:else if attestation.partial}
+						<span class="muted">checkpoints are not anchored</span>
+					{:else}
+						<span class="pending">not yet anchored — the hourly transparency-log sweep is pending</span>
+					{/if}
+				</span>
+			</div>
+			<div class="field">
+				<span class="k">Coordinator signing key</span>
+				<span class="v mono">{attestation.signing_key_pubkey_hex ? `${attestation.signing_key_pubkey_hex.slice(0, 16)}…` : '—'}</span>
+			</div>
+			<div class="field wide">
+				<span class="k">Merkle root</span>
+				<span class="v mono">{attestation.merkle_root ?? '—'}</span>
+			</div>
+		</section>
+	{:else if attestationError && attestationError.kind !== 'not_ready'}
+		<p class="muted">Attestation unavailable: {attestationError.message}</p>
+	{:else if experiment.status === 'completed'}
+		<p class="muted">No attestation available for this experiment.</p>
+	{:else}
+		<p class="muted">
+			The final result-set attestation is issued when the experiment completes.
+			{#if status === 'running' || status === 'approved' || status === 'paused'}
+				You can anchor a partial integrity checkpoint over the consensus-so-far set now:
+			{/if}
+		</p>
+		{#if status === 'running' || status === 'approved' || status === 'paused'}
+			<button
+				class="act"
+				onclick={() => id && loadAttestation(id, { checkpoint: true })}
+				disabled={attestationLoading}
+				title="Build a checkpoint attestation over the units that have reached consensus so far. Tamper-evident even mid-run."
+			>
+				Build checkpoint attestation
+			</button>
+		{/if}
+	{/if}
+
+	<div class="custody" class:held={!!experiment.results_collected_at}>
+		{#if experiment.results_collected_at}
+			<p class="custody-line ok">
+				You hold the durable copy — collected {fmt(experiment.results_collected_at)}.
+				Server-side payloads age off after collection; your bundle is the record.
+			</p>
+			<p class="custody-cmd">
+				Re-verify it offline anytime: <code>auspexai-tenant bundle verify &lt;bundle.json&gt;</code>
+			</p>
+		{:else}
+			<p class="custody-line">
+				Not yet collected — the coordinator still holds the only copy. Download the
+				evidence bundle (Results below) to take custody.
+			</p>
+		{/if}
+		{#if experiment.retention_hold}
+			<p class="custody-hold" title="A maintainer placed a retention hold — the age-off sweep skips this experiment.">
+				retention hold active — age-off paused
+			</p>
+		{/if}
+	</div>
 
 	<h2>Activity</h2>
 	{#if !activity}
@@ -751,6 +882,73 @@
 		font-family: ui-monospace, monospace;
 		font-size: 0.78rem;
 		color: #b8bfd0;
+	}
+	/* ── Integrity panel (R-D inc-1) ── */
+	.att-status {
+		font-size: 0.85rem;
+		color: #7fd1a8;
+		margin: 0.4rem 0 0.6rem;
+		max-width: 56rem;
+	}
+	.att-status.partial {
+		color: #fbbf24;
+	}
+	a.rekor {
+		color: #7aa2ff;
+		text-decoration: none;
+		font-family: ui-monospace, monospace;
+		font-size: 0.8rem;
+	}
+	a.rekor:hover {
+		text-decoration: underline;
+	}
+	.proof {
+		display: block;
+		margin-top: 0.2rem;
+		font-size: 0.7rem;
+		color: #7fd1a8;
+	}
+	.pending {
+		color: #fbbf24;
+		font-size: 0.8rem;
+	}
+	.custody {
+		border: 1px solid #1e2638;
+		border-left: 3px solid #2a3550;
+		border-radius: 6px;
+		background: #0e1424;
+		padding: 0.6rem 0.8rem;
+		margin: 0.75rem 0 0;
+	}
+	.custody.held {
+		border-left-color: #2f6b4d;
+	}
+	.custody-line {
+		margin: 0;
+		font-size: 0.83rem;
+		color: #b8bfd0;
+	}
+	.custody-line.ok {
+		color: #7fd1a8;
+	}
+	.custody-cmd {
+		margin: 0.35rem 0 0;
+		font-size: 0.78rem;
+		color: #8b93a7;
+	}
+	.custody-cmd code {
+		font-family: ui-monospace, monospace;
+		font-size: 0.74rem;
+		color: #b8bfd0;
+		background: #141b2c;
+		border: 1px solid #1e2638;
+		border-radius: 4px;
+		padding: 0.1rem 0.35rem;
+	}
+	.custody-hold {
+		margin: 0.35rem 0 0;
+		font-size: 0.74rem;
+		color: #fbbf24;
 	}
 	/* ── Results (R-D5) ── */
 	.results-head {

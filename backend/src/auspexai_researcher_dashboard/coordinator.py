@@ -29,7 +29,10 @@ class CoordinatorError(Exception):
     rotated), ``not_found`` (404 — absent or, under tenant-private scoping, not
     this tenant's), ``conflict`` (409 — a lifecycle action is incompatible with
     the experiment's current state; carries the coordinator's own reason),
-    ``unreachable`` (transport error), ``coordinator_error`` (any other non-2xx).
+    ``not_ready`` (425 — the resource exists but isn't available yet, e.g. the
+    final result-set attestation before completion; carries the coordinator's
+    own reason), ``unreachable`` (transport error), ``coordinator_error`` (any
+    other non-2xx).
     `http_status` is what the dashboard backend returns to the SPA;
     `coord_status` is the coordinator's status when there was one.
     """
@@ -90,6 +93,15 @@ def _classify_response(
             409,
             conflict_message or "this action conflicts with the experiment's current state",
         )
+    if status_code == 425:
+        # Not an error — a not-yet state (the final result-set attestation is
+        # served only once the experiment is COMPLETED). The UI renders it as
+        # informational, not as a failure.
+        return (
+            "not_ready",
+            425,
+            conflict_message or "not available until the experiment completes",
+        )
     return ("coordinator_error", 502, f"the coordinator returned HTTP {status_code}")
 
 
@@ -127,11 +139,13 @@ class CoordinatorClient:
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         """Raise a classified `CoordinatorError` for any non-2xx response. A 409
-        carries the coordinator's own conflict reason; other statuses use canned
+        or 425 carries the coordinator's own reason; other statuses use canned
         messages (404 is deliberately generic — see `_classify_response`)."""
         if response.status_code < 400:
             return
-        conflict_message = _coord_error_message(response) if response.status_code == 409 else None
+        conflict_message = (
+            _coord_error_message(response) if response.status_code in (409, 425) else None
+        )
         kind, http_status, message = _classify_response(response.status_code, conflict_message)
         raise CoordinatorError(
             kind, message, http_status=http_status, coord_status=response.status_code
