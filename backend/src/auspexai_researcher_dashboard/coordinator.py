@@ -88,8 +88,7 @@ def _classify_response(
         return (
             "conflict",
             409,
-            conflict_message
-            or "this action conflicts with the experiment's current state",
+            conflict_message or "this action conflicts with the experiment's current state",
         )
     return ("coordinator_error", 502, f"the coordinator returned HTTP {status_code}")
 
@@ -132,12 +131,8 @@ class CoordinatorClient:
         messages (404 is deliberately generic — see `_classify_response`)."""
         if response.status_code < 400:
             return
-        conflict_message = (
-            _coord_error_message(response) if response.status_code == 409 else None
-        )
-        kind, http_status, message = _classify_response(
-            response.status_code, conflict_message
-        )
+        conflict_message = _coord_error_message(response) if response.status_code == 409 else None
+        kind, http_status, message = _classify_response(response.status_code, conflict_message)
         raise CoordinatorError(
             kind, message, http_status=http_status, coord_status=response.status_code
         )

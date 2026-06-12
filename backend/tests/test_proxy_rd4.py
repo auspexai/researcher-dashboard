@@ -85,9 +85,7 @@ def test_resume_signed_and_proxied_verbatim(tmp_path: Path) -> None:
 
 def test_finalize_signed_and_proxied_verbatim(tmp_path: Path) -> None:
     updated = {"experiment_id": "exp-1", "status": "approved", "submissions_finalized": True}
-    rec = _Recorder(
-        {"/api/v0/experiments/exp-1/actions/finalize-submissions": (200, updated)}
-    )
+    rec = _Recorder({"/api/v0/experiments/exp-1/actions/finalize-submissions": (200, updated)})
     client, pubkey = _make_client(tmp_path, rec)
 
     response = client.post("/api/v0/experiments/exp-1/actions/finalize-submissions")

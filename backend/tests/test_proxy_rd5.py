@@ -81,7 +81,11 @@ def test_export_signed_and_proxied_verbatim(tmp_path: Path) -> None:
         "experiment_id": "exp-1",
         "consensus_results": [{"result_id": "res-1"}],
         "receipts": [{"receipt_id": "rcpt-1", "cose_b64": "AA=="}],
-        "transfer": {"transfer_id": "xfer-1", "coordinator_signature": "ab", "result_set_root": "r"},
+        "transfer": {
+            "transfer_id": "xfer-1",
+            "coordinator_signature": "ab",
+            "result_set_root": "r",
+        },
     }
     rec = _Recorder({"/api/v0/experiments/exp-1/results/export": (200, bundle)})
     client, pubkey = _make_client(tmp_path, rec)
