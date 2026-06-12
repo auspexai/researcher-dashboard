@@ -33,8 +33,10 @@ else
   say "existing environment at $APP_DIR (upgrading in place)"
 fi
 "$APP_DIR/bin/pip" install --quiet --upgrade pip
-say "installing auspexai-researcher-dashboard (+ auspexai-tenant) from PyPI"
-"$APP_DIR/bin/pip" install --quiet --upgrade auspexai-researcher-dashboard
+say "installing auspexai-researcher-dashboard + auspexai-tenant from PyPI"
+# Both named explicitly: pip's only-if-needed strategy would otherwise leave
+# an already-satisfied SDK on an old version when only the dashboard moved.
+"$APP_DIR/bin/pip" install --quiet --upgrade auspexai-researcher-dashboard auspexai-tenant
 
 # ── expose the commands ──────────────────────────────────────────────────────
 mkdir -p "$BIN_DIR"
@@ -76,6 +78,7 @@ fi
 
 # ── done ─────────────────────────────────────────────────────────────────────
 say "installed: $("$APP_DIR/bin/auspexai-dashboard" --version 2>/dev/null || echo auspexai-dashboard) ✓"
+say "installed: $("$APP_DIR/bin/auspexai-tenant" --version 2>/dev/null || echo auspexai-tenant) ✓"
 cat <<'NEXT'
 
 Next steps (full guide: https://github.com/auspexai/.github/blob/main/ONBOARDING.md):
