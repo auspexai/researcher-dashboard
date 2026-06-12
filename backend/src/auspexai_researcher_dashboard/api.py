@@ -211,6 +211,16 @@ def build_api_router() -> APIRouter:
         {title, description, reason}. Always enters the maintainer review queue."""
         return await _proxy_post_body(request, "/api/v0/software-requests")
 
+    @router.get("/tenant-applications/mine")
+    async def list_my_tenant_applications(request: Request) -> JSONResponse:
+        """My tenant applications (the Overview's onboarding tracker). Unlike
+        every other proxy route this works for an UNREGISTERED key: the
+        coordinator verifies the RFC 9421 signature against the request's own
+        keyid (self-keyid proof of possession — until approval binds it, the
+        applying key IS the identity). So the dashboard can show
+        pending/declined application status before whoami ever succeeds."""
+        return await _proxy(request, "/api/v0/tenant-applications/mine")
+
     @router.get("/auth/whoami")
     async def whoami(request: Request) -> JSONResponse:
         """The *confirmed bound* identity: the coordinator resolves the signing

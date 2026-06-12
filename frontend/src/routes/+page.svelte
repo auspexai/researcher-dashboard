@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, ApiError, type WhoAmI } from '$lib/api';
+	import { api, ApiError, type TenantApplication, type WhoAmI } from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	type Health = {
@@ -14,6 +14,11 @@
 	let healthError = $state<string | null>(null);
 	let whoami = $state<WhoAmI | null>(null);
 	let whoamiError = $state<ApiError | null>(null);
+	// Onboarding tracker (key present but not bound): null = not fetched yet.
+	let applications = $state<TenantApplication[] | null>(null);
+	let applicationsError = $state<string | null>(null);
+
+	const ONBOARDING_URL = 'https://github.com/auspexai/.github/blob/main/ONBOARDING.md';
 
 	// pubkeys are 64 hex chars; show head…tail, full string on hover.
 	const short = (k: string | null | undefined) => (k ? `${k.slice(0, 10)}…${k.slice(-8)}` : '—');
@@ -31,6 +36,17 @@
 				whoami = await api.whoami();
 			} catch (e) {
 				whoamiError = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+				// Key present but not bound → applicant territory: ask the
+				// coordinator for this key's applications. That route works for an
+				// unregistered key (self-keyid proof of possession), so it is
+				// exactly the state where whoami fails that it exists for.
+				if (whoamiError.kind === 'unauthorized') {
+					try {
+						applications = (await api.listMyApplications()).applications ?? [];
+					} catch (e2) {
+						applicationsError = e2 instanceof ApiError ? e2.message : String(e2);
+					}
+				}
 			}
 		}
 	});
@@ -40,6 +56,11 @@
 	// true = local key matches the coordinator's binding; false = mismatch (rotated?);
 	// null = can't compare yet.
 	const matches = $derived(local && bound ? local === bound : null);
+
+	// Onboarding tracker: a pending application wins; otherwise the newest one
+	// decides (the coordinator returns them newest-first).
+	const pendingApp = $derived(applications?.find((a) => a.status === 'pending') ?? null);
+	const newestApp = $derived(applications?.[0] ?? null);
 </script>
 
 <h1>Overview</h1>
@@ -73,7 +94,13 @@
 			{#if !health.identity.key_present}
 				<p class="warn">No tenant key</p>
 				<p class="muted">
-					Run <code>auspexai-tenant key generate</code> once your tenant is approved.
+					Run <code>auspexai-tenant apply</code> — it creates your key and submits your
+					application.
+				</p>
+				<p class="muted">
+					<a class="doc-link" href={ONBOARDING_URL} target="_blank" rel="noopener noreferrer"
+						>Onboarding guide ↗</a
+					>
 				</p>
 			{:else if whoami?.tenant_id}
 				<p class="ok">Tenant <strong>{whoami.tenant_id}</strong></p>
@@ -89,6 +116,44 @@
 			{:else if whoami}
 				<!-- key present + recognized, but not a researcher tenant (e.g. anonymous/maintainer) -->
 				<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>
+			{:else if whoamiError?.kind === 'unauthorized'}
+				<!-- Key present but the coordinator has no tenant bound to it:
+				     applicant territory, not an operator problem. Track the
+				     application this key submitted instead (the /mine route works
+				     for an unregistered key — self-keyid proof of possession). -->
+				{#if applicationsError}
+					<p class="warn">Key not bound to a tenant yet</p>
+					<p class="muted">Could not check your application status: {applicationsError}</p>
+				{:else if applications === null}
+					<p class="muted">Key not bound yet — checking for your application…</p>
+				{:else if pendingApp}
+					<p class="warn">
+						Application <code>{pendingApp.application_id}</code> pending Maintainer review
+					</p>
+					<p class="muted small">This page goes green on approval.</p>
+				{:else if newestApp?.status === 'declined'}
+					<p class="warn">Application <code>{newestApp.application_id}</code> declined</p>
+					{#if newestApp.resolution_reason}
+						<p class="muted">Reason: {newestApp.resolution_reason}</p>
+					{/if}
+					<p class="muted small">You can re-apply: <code>auspexai-tenant apply</code></p>
+				{:else if newestApp}
+					<!-- Unexpected: newest application is approved yet whoami still says
+					     unbound (approval seconds ago, or the key changed since). -->
+					<p class="warn">
+						Application <code>{newestApp.application_id}</code> approved, but this key isn't
+						bound yet
+					</p>
+					<p class="muted small">Reload in a moment; if it persists, contact the Maintainer.</p>
+				{:else}
+					<p class="warn">No application found for this key</p>
+					<p class="muted">Run <code>auspexai-tenant apply</code> to submit one.</p>
+					<p class="muted">
+						<a class="doc-link" href={ONBOARDING_URL} target="_blank" rel="noopener noreferrer"
+							>Onboarding guide ↗</a
+						>
+					</p>
+				{/if}
 			{:else if !whoamiError}
 				<p class="muted">Confirming identity…</p>
 			{/if}
@@ -132,9 +197,10 @@
 		</div>
 	</div>
 
-	{#if whoamiError}
-		<!-- Most importantly the unauthorized case: key present locally but the
-		     coordinator has no tenant bound to it (unbound or rotated). -->
+	{#if whoamiError && whoamiError.kind !== 'unauthorized'}
+		<!-- Transport/coordinator failures only. The unauthorized case (key
+		     present but not bound) is an applicant state, rendered as the
+		     onboarding tracker in the Identity card above — not as an error. -->
 		<ErrorState error={whoamiError} />
 	{/if}
 
@@ -250,12 +316,14 @@
 	.sdk-list li {
 		margin: 0.25rem 0;
 	}
-	a.sdk-link {
+	a.sdk-link,
+	a.doc-link {
 		color: #7aa2ff;
 		text-decoration: none;
 		font-size: 0.8rem;
 	}
-	a.sdk-link:hover {
+	a.sdk-link:hover,
+	a.doc-link:hover {
 		text-decoration: underline;
 	}
 </style>

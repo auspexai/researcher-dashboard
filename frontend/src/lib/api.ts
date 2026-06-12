@@ -292,6 +292,20 @@ export interface SoftwareRequest {
 	release_version: string | null;
 }
 
+// ── Onboarding tracker (Overview) ───────────────────────────────────────────
+
+// One of MY tenant applications (coordinator GET /tenant-applications/mine).
+// The one route that works for an UNREGISTERED key: the coordinator verifies
+// the RFC 9421 signature against the request's own keyid (self-keyid proof of
+// possession of the applying key), so the Overview can track an application
+// before whoami ever succeeds. Newest first (coordinator orders created_at DESC).
+export interface TenantApplication {
+	application_id: string;
+	status: 'pending' | 'approved' | 'declined' | string;
+	resolution_reason: string | null;
+	created_tenant_id: string | null;
+}
+
 export const api = {
 	listExperiments: () => getJson<{ experiments?: Experiment[] }>('/api/v0/experiments'),
 	getExperiment: (id: string) =>
@@ -305,6 +319,10 @@ export const api = {
 	getExperimentActivity: (id: string) =>
 		getJson<ExperimentActivity>(`/api/v0/experiments/${encodeURIComponent(id)}/activity`),
 	whoami: () => getJson<WhoAmI>('/api/v0/auth/whoami'),
+	// Onboarding tracker: my tenant applications, signed by the local key even
+	// when it isn't bound yet (self-keyid proof of possession).
+	listMyApplications: () =>
+		getJson<{ applications?: TenantApplication[] }>('/api/v0/tenant-applications/mine'),
 
 	// Lifecycle actions (R-D4). Each returns the updated Experiment. The
 	// coordinator enforces own-tenant authorization + transition validity; an
