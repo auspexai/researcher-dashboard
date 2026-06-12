@@ -2,6 +2,10 @@
 
 Tenant-scoped researcher / tenant view for [AuspexAI](https://github.com/auspexai) — a volunteer-driven, open-source distributed compute network for AI safety research.
 
+**New researcher?** Start at [ONBOARDING.md](https://github.com/auspexai/.github/blob/main/ONBOARDING.md) —
+install, apply for a tenant from the CLI, and this dashboard confirms your
+binding on the Overview page.
+
 ## Status
 
 **R-D0 — scaffold (2026-05-28).** FastAPI backend + SvelteKit static frontend; `auspexai-dashboard serve` runs the dashboard locally and opens a browser. Placeholder pages + a health probe (coordinator connectivity + tenant-key presence). No authenticated coordinator calls yet. Full design + milestones: `Documentation/AuspexAI/v0.1.0/researcher_dashboard_design.md`.
