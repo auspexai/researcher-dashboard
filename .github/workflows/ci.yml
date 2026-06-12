@@ -36,10 +36,9 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          # auspexai-tenant is not on PyPI yet (publish deferred); install it from
-          # the sibling repo so the editable install below can resolve it. Once the
-          # SDK is published this line is dropped and the plain dependency resolves.
-          pip install "auspexai-tenant @ git+https://github.com/auspexai/tenant-sdk.git@main"
+          # auspexai-tenant resolves from PyPI (published 2026-06-12, trusted
+          # publishing) — CI tests against the released SDK, matching what a
+          # researcher installs.
           pip install -e ".[dev]"
       - name: Lint
         run: ruff check src tests
