@@ -338,6 +338,30 @@ export interface LocalConfig {
 	config: ExperimentConfigTables;
 }
 
+// Layer 3: the dashboard shells the SDK. ExecResult is build/submit's captured
+// output (ok=false on a non-zero exit — an outcome, not an HTTP error).
+export interface ExecResult {
+	ok: boolean;
+	returncode: number;
+	stdout: string;
+	stderr: string;
+	cmd: string[];
+}
+
+// The managed `run` process — the driver loop. `present:false` ⇒ none started.
+// `running` + a growing log ⇒ working; `running` + a static log ⇒ idle between
+// rounds; finished rc 0 ⇒ done; rc != 0 ⇒ failed. The driver pulse reads this.
+export interface RunStatus {
+	present: boolean;
+	running?: boolean;
+	pid?: number;
+	returncode?: number | null;
+	started_at?: string;
+	cwd?: string;
+	log_size?: number;
+	log_tail?: string;
+}
+
 export const api = {
 	listExperiments: () => getJson<{ experiments?: Experiment[] }>('/api/v0/experiments'),
 	getExperiment: (id: string) =>
@@ -422,5 +446,15 @@ export const api = {
 		postJsonBody<{ written: string; config: ExperimentConfigTables }>(
 			'/api/v0/local/config',
 			config
-		)
+		),
+
+	// Layer 3 exec (gated by exec_enabled). build/submit are synchronous; run
+	// starts the managed background driver. An `exec_disabled` ApiError means
+	// LOCAL_EXEC isn't set — the page shows the buttons greyed with a hint.
+	execBuild: () => postJson<ExecResult>('/api/v0/local/build'),
+	execSubmit: () => postJson<ExecResult>('/api/v0/local/submit'),
+	startRun: () => postJson<{ started: boolean; pid: number; cwd: string }>('/api/v0/local/run'),
+	getRun: () => getJson<RunStatus>('/api/v0/local/run'),
+	stopRun: () =>
+		postJson<{ stopped: boolean; returncode: number | null }>('/api/v0/local/run/stop')
 };

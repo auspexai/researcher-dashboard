@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, ApiError, type LocalStatus, type ExperimentConfigTables } from '$lib/api';
+	import {
+		api,
+		ApiError,
+		type LocalStatus,
+		type ExperimentConfigTables,
+		type ExecResult,
+		type RunStatus
+	} from '$lib/api';
 
 	// §8 browser-driven stand-up, Layer 2: edit the workspace experiment.toml
 	// from the browser so there's no text file to hand-author. The form is the
@@ -128,6 +135,125 @@
 			saving = false;
 		}
 	}
+
+	// ── Layer 3: build → submit → run (shells the SDK on this machine) ─────────
+	// Each is an explicit click (the per-action consent); submit + run, which
+	// reach the network / start the hours-long driver, also confirm first. The
+	// driver pulse below is the run's live surface (same colour identity as the
+	// experiment heart: cyan working · blue idle · green done · red failed).
+
+	let building = $state(false);
+	let submitting = $state(false);
+	let starting = $state(false);
+	let stopping = $state(false);
+	let execNote = $state<{ text: string; ok: boolean } | null>(null);
+	let execLog = $state(''); // build/submit output, shown until the run takes over
+	let run = $state<RunStatus | null>(null);
+	let lastLogSize = $state(0);
+	let working = $state(false); // log grew since the last poll → driver is active
+
+	const showResult = (verb: string, r: ExecResult) => {
+		execNote = { text: `${verb} ${r.ok ? 'ok' : `failed (rc ${r.returncode})`}`, ok: r.ok };
+		execLog = [r.stdout, r.stderr].filter(Boolean).join('\n').trim();
+	};
+
+	async function doBuild() {
+		building = true;
+		execNote = null;
+		try {
+			showResult('build', await api.execBuild());
+			status = await api.getLocalStatus();
+		} catch (e) {
+			execNote = { text: e instanceof ApiError ? e.message : String(e), ok: false };
+		} finally {
+			building = false;
+		}
+	}
+
+	async function doSubmit() {
+		if (!confirm('Submit creates an experiment on the coordinator. Continue?')) return;
+		submitting = true;
+		execNote = null;
+		try {
+			showResult('submit', await api.execSubmit());
+		} catch (e) {
+			execNote = { text: e instanceof ApiError ? e.message : String(e), ok: false };
+		} finally {
+			submitting = false;
+		}
+	}
+
+	async function doRun() {
+		if (!confirm('Run starts the driver on THIS machine and keeps issuing rounds for hours. Continue?'))
+			return;
+		starting = true;
+		execNote = null;
+		try {
+			const r = await api.startRun();
+			execNote = { text: `run started (pid ${r.pid})`, ok: true };
+			execLog = '';
+			await pollRun();
+		} catch (e) {
+			execNote = { text: e instanceof ApiError ? e.message : String(e), ok: false };
+		} finally {
+			starting = false;
+		}
+	}
+
+	async function doStop() {
+		if (!confirm('Stop the running driver?')) return;
+		stopping = true;
+		try {
+			await api.stopRun();
+			await pollRun();
+		} catch (e) {
+			execNote = { text: e instanceof ApiError ? e.message : String(e), ok: false };
+		} finally {
+			stopping = false;
+		}
+	}
+
+	async function pollRun() {
+		try {
+			const r = await api.getRun();
+			// log growth since the last sample ⇒ the driver is actively working
+			working = !!r.running && (r.log_size ?? 0) > lastLogSize;
+			lastLogSize = r.log_size ?? 0;
+			run = r;
+		} catch {
+			/* transient — keep the last known state */
+		}
+	}
+
+	// Poll the run while exec is enabled (cheap GET; the heart wants a steady beat).
+	$effect(() => {
+		if (!status?.exec_enabled) return;
+		pollRun();
+		const id = setInterval(pollRun, 2500);
+		return () => clearInterval(id);
+	});
+
+	type DriverState = 'none' | 'working' | 'idle' | 'done' | 'failed';
+	const driver = $derived<DriverState>(
+		!run?.present
+			? 'none'
+			: run.running
+				? working
+					? 'working'
+					: 'idle'
+				: run.returncode === 0
+					? 'done'
+					: 'failed'
+	);
+	const driverText = $derived(
+		{
+			none: '',
+			working: 'driver issuing rounds…',
+			idle: 'between rounds',
+			done: 'run complete',
+			failed: `run exited (rc ${run?.returncode})`
+		}[driver]
+	);
 </script>
 
 {#if status === null}
@@ -222,6 +348,40 @@ auspexai-tenant experiment run    latest --key &lt;key&gt; --doorbell</code></pr
 					{#if saveOk}<span class="ok">{saveOk}</span>{/if}
 					{#if saveError}<span class="err">{saveError}</span>{/if}
 				</div>
+			</div>
+		{/if}
+
+		{#if status.exec_enabled}
+			<div class="exec">
+				<div class="exec-head">
+					<span class="dot {driver}"></span>
+					<strong>Run on this machine</strong>
+					{#if driverText}<span class="dstate {driver}">{driverText}</span>{/if}
+				</div>
+				<div class="btn-row">
+					<button class="op" onclick={doBuild} disabled={building || !!run?.running}>
+						{building ? 'Building…' : 'Build'}
+					</button>
+					<button class="op" onclick={doSubmit} disabled={submitting || !!run?.running}>
+						{submitting ? 'Submitting…' : 'Submit'}
+					</button>
+					<button class="op go" onclick={doRun} disabled={starting || !!run?.running}>
+						{starting ? 'Starting…' : 'Run ▶'}
+					</button>
+					{#if run?.running}
+						<button class="op stop" onclick={doStop} disabled={stopping}>
+							{stopping ? 'Stopping…' : 'Stop'}
+						</button>
+					{/if}
+				</div>
+				{#if execNote}<p class="exec-note" class:bad={!execNote.ok}>{execNote.text}</p>{/if}
+				{#if run?.running || execLog || run?.log_tail}
+					<pre class="exec-log"><code
+							>{run?.present && (run?.running || !execLog)
+								? (run?.log_tail ?? '')
+								: execLog}</code
+						></pre>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -363,5 +523,123 @@ auspexai-tenant experiment run    latest --key &lt;key&gt; --doorbell</code></pr
 	.err {
 		color: #fca5a5;
 		font-size: 0.85rem;
+	}
+
+	/* Layer 3 exec — the driver pulse shares the experiment heart's colour
+	   identity: cyan working · blue idle · green done · red failed. */
+	.exec {
+		padding: 0.9rem 1.1rem 1.1rem;
+		border-top: 1px solid #1e2638;
+	}
+	.exec-head {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: #dbe2f0;
+		margin-bottom: 0.6rem;
+	}
+	.exec-head strong {
+		font-size: 0.92rem;
+		font-weight: 600;
+	}
+	.dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: #2a3450;
+		flex: 0 0 auto;
+	}
+	.dot.working {
+		background: #67e8f9;
+		animation: beat 1.1s ease-out infinite;
+	}
+	.dot.idle {
+		background: #4a7dff;
+	}
+	.dot.done {
+		background: #6ee7b7;
+	}
+	.dot.failed {
+		background: #fca5a5;
+	}
+	@keyframes beat {
+		0% {
+			box-shadow: 0 0 0 0 rgba(103, 232, 249, 0.55);
+		}
+		70% {
+			box-shadow: 0 0 0 8px rgba(103, 232, 249, 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgba(103, 232, 249, 0);
+		}
+	}
+	.dstate {
+		margin-left: auto;
+		font-size: 0.78rem;
+		color: #9aa3b8;
+	}
+	.dstate.working {
+		color: #67e8f9;
+	}
+	.dstate.idle {
+		color: #4a7dff;
+	}
+	.dstate.done {
+		color: #6ee7b7;
+	}
+	.dstate.failed {
+		color: #fca5a5;
+	}
+	.btn-row {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	button.op {
+		background: #16203a;
+		color: #cdd5e6;
+		border: 1px solid #2a3450;
+		border-radius: 6px;
+		padding: 0.4rem 0.9rem;
+		font: inherit;
+		cursor: pointer;
+	}
+	button.op:hover:not(:disabled) {
+		border-color: #3a4668;
+	}
+	button.op.go {
+		background: #155e6b;
+		color: #e0fbff;
+		border-color: #1d7f90;
+	}
+	button.op.stop {
+		background: #3a1622;
+		color: #fca5a5;
+		border-color: #6b2235;
+	}
+	button.op:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+	.exec-note {
+		font-size: 0.82rem;
+		color: #6ee7b7;
+		margin: 0.6rem 0 0.3rem;
+	}
+	.exec-note.bad {
+		color: #fca5a5;
+	}
+	.exec-log {
+		margin: 0.5rem 0 0;
+		max-height: 16rem;
+		overflow: auto;
+		font-size: 0.76rem;
+	}
+	.exec-log code {
+		background: none;
+		padding: 0;
+		color: #9fb4cf;
+		white-space: pre-wrap;
+		word-break: break-word;
 	}
 </style>
