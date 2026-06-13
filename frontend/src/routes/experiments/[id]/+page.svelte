@@ -234,16 +234,6 @@
 	const counts = $derived(workUnits?.counts_by_status ?? {});
 	const totalUnits = $derived(Object.values(counts).reduce((a, b) => a + b, 0));
 
-	// Replication fill as a 0–100% bar; guard against divide-by-zero pre-activity.
-	const fillPct = $derived(
-		activity?.replication_target_total
-			? Math.min(
-					100,
-					Math.round(((activity.completions_total ?? 0) / activity.replication_target_total) * 100)
-				)
-			: 0
-	);
-
 	// Researcher-actionable transitions, gated on the coordinator's transition
 	// map (approve/archive are maintainer-only and intentionally absent). These
 	// `can*` predicates are the source-of-truth ENABLE conditions — they mirror
@@ -477,49 +467,18 @@
 		{/if}
 	</div>
 
-	<h2>Activity</h2>
-	{#if !activity}
-		<p class="muted">No activity yet.</p>
-	{:else}
-		<div class="counts">
-			<div class="count">
-				<span class="n">{activity.active_contributor_count ?? 0}</span>
-				<span class="label">active contributors</span>
-			</div>
-			<div class="count">
-				<span class="n">{activity.completions_total ?? 0}/{activity.replication_target_total ?? 0}</span>
-				<span class="label">replication fill</span>
-			</div>
-			<div class="count">
-				<span class="n">{activity.total_work_units ?? 0}</span>
-				<span class="label">work units</span>
-			</div>
-			{#if activity.network_active_workers != null}
-				<div class="count" title="Workers active network-wide (heartbeat-fresh, not retired or quarantined).">
-					<span class="n">{activity.network_active_workers}</span>
-					<span class="label">network workers</span>
-				</div>
-			{/if}
-		</div>
-		{#if activity.replication_target_total}
-			<div class="bar" title="{fillPct}% replicated">
-				<div class="bar-fill" style="width: {fillPct}%"></div>
-			</div>
-		{/if}
-		<p class="muted last-activity">
-			Last activity: {fmt(activity.last_activity_at)}
+	<!-- The headline activity numbers (contributors, replication fill, work
+	     units, network size, last beat) now live in the ActivityHeart above.
+	     What remains here is the drill-down the heart doesn't show: the
+	     researcher's OWN-account workers backing this experiment. Most
+	     researchers run none, so the section simply isn't there for them. -->
+	{#if activity?.own_workers && activity.own_workers.length > 0}
+		<h2>Your workers</h2>
+		<p class="muted">
+			{activity.own_workers.length} of your own-account {activity.own_workers.length === 1
+				? 'worker is'
+				: 'workers are'} backing this experiment (other contributors are anonymized).
 		</p>
-		<p class="anon-note">
-			Contributor count is anonymized — a tenant cannot see which volunteers ran its work.
-		</p>
-
-		{#if activity.own_workers && activity.own_workers.length > 0}
-			<h3>Your workers</h3>
-			<p class="muted">
-				{activity.own_workers.length} of your own-account {activity.own_workers.length === 1
-					? 'worker is'
-					: 'workers are'} backing this experiment.
-			</p>
 			<table class="workers">
 				<thead>
 					<tr><th>Worker</th><th>Tier</th><th>Status</th><th>Results</th><th>Last activity</th></tr>
@@ -546,7 +505,6 @@
 					{/each}
 				</tbody>
 			</table>
-		{/if}
 	{/if}
 
 	<h2>Work units</h2>
@@ -814,13 +772,6 @@
 		color: #8b93a7;
 		margin: 1.5rem 0 0.5rem;
 	}
-	h3 {
-		font-size: 0.72rem;
-		text-transform: uppercase;
-		letter-spacing: 0.07em;
-		color: #8b93a7;
-		margin: 1.1rem 0 0.4rem;
-	}
 	.muted {
 		color: #8b93a7;
 		font-size: 0.85rem;
@@ -850,26 +801,6 @@
 		text-transform: uppercase;
 		letter-spacing: 0.07em;
 		color: #8b93a7;
-	}
-	.bar {
-		height: 8px;
-		background: #1e2638;
-		border-radius: 4px;
-		overflow: hidden;
-		margin: 0.75rem 0 0.25rem;
-	}
-	.bar-fill {
-		height: 100%;
-		background: #4a7dff;
-		transition: width 0.3s ease;
-	}
-	.last-activity {
-		margin: 0.5rem 0 0;
-	}
-	.anon-note {
-		color: #6b7390;
-		font-size: 0.72rem;
-		margin: 0.35rem 0 0;
 	}
 	table.receipts,
 	table.workers {
