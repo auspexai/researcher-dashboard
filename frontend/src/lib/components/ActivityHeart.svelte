@@ -223,7 +223,7 @@
 		animation: beat 1.1s ease-out infinite;
 	}
 	.pulse-dot.between {
-		background: #155e6b;
+		background: #4a7dff;
 	}
 	@keyframes beat {
 		0% {
@@ -268,7 +268,7 @@
 		color: #b8bfd0;
 	}
 	.narration.reassure {
-		color: #67e8f9;
+		color: #4a7dff;
 	}
 	.vitals {
 		display: flex;
