@@ -4,6 +4,7 @@
 	import { api, ApiError, type Experiment } from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import ExperimentSetup from '$lib/components/ExperimentSetup.svelte';
 
 	let experiments = $state<Experiment[] | null>(null);
 	let error = $state<ApiError | null>(null);
@@ -23,6 +24,8 @@
 <h1>My Experiments</h1>
 <p class="lead">Experiments running under your tenant on the AuspexAI network.</p>
 
+<ExperimentSetup />
+
 {#if error}
 	<ErrorState {error} />
 {:else if experiments === null}
@@ -31,8 +34,9 @@
 	<div class="empty">
 		<p>No experiments yet.</p>
 		<p class="muted">
-			Submit one with <code>auspexai-tenant manifest upload</code>; it will appear here once the
-			coordinator accepts it.
+			Build one with <code>auspexai-tenant experiment build pkg/</code>, then
+			<code>experiment submit</code> + <code>experiment run</code> (or use “Set up an experiment”
+			above when a workspace is configured). It appears here once the coordinator accepts it.
 		</p>
 	</div>
 {:else}

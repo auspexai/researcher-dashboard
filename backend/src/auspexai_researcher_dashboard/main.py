@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__
 from .api import build_api_router
 from .config import ResearcherDashboardConfig
+from .local_ops import build_local_router
 
 
 def _local_pubkey_hex(config: ResearcherDashboardConfig) -> str | None:
@@ -53,6 +54,11 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
     # Tenant-scoped read proxy (R-D2). Registered before the SPA catch-all
     # below so /api/v0/* resolves here, not to the index.html fallback.
     app.include_router(build_api_router())
+    # Local-operations (§8): config editor (Layer 2) + SDK exec (Layer 3). The
+    # router is always mounted; each route gates on config.workspace_dir /
+    # local_exec_enabled and reports `unconfigured` when off, so the SPA can
+    # render the right state without a separate capability probe.
+    app.include_router(build_local_router())
 
     @app.get("/api/v0/health")
     async def health() -> JSONResponse:

@@ -14,7 +14,11 @@ export type ErrorKind =
 	| 'not_ready'
 	| 'unreachable'
 	| 'coordinator_error'
-	| 'client_error';
+	| 'client_error'
+	// Local-operations (§8): the dashboard's own machine, not the coordinator.
+	| 'unconfigured'
+	| 'bad_request'
+	| 'render_failed';
 
 export class ApiError extends Error {
 	kind: ErrorKind;
@@ -306,6 +310,34 @@ export interface TenantApplication {
 	created_tenant_id: string | null;
 }
 
+// Local-operations (§8 browser-driven stand-up). These touch the researcher's
+// OWN machine, not the coordinator: the experiment.toml config editor (Layer 2)
+// and — gated by `exec_enabled` — the SDK Build/Submit/Run buttons (Layer 3).
+export interface LocalStatus {
+	workspace_set: boolean;
+	workspace: string | null;
+	workspace_exists: boolean;
+	config_present: boolean;
+	pkg_present: boolean;
+	exec_enabled: boolean;
+}
+
+// experiment.toml as nested tables. Known keys are typed; unknown keys pass
+// through (a tenant's bespoke [driver] knobs survive a form save server-side).
+export interface ExperimentConfigTables {
+	experiment?: Record<string, unknown>;
+	executor?: Record<string, unknown>;
+	reducer?: Record<string, unknown>;
+	work_unit_source?: Record<string, unknown>;
+	driver?: Record<string, unknown>;
+	[table: string]: Record<string, unknown> | undefined;
+}
+
+export interface LocalConfig {
+	present: boolean;
+	config: ExperimentConfigTables;
+}
+
 export const api = {
 	listExperiments: () => getJson<{ experiments?: Experiment[] }>('/api/v0/experiments'),
 	getExperiment: (id: string) =>
@@ -378,5 +410,17 @@ export const api = {
 	listSoftwareRequests: () =>
 		getJson<{ requests?: SoftwareRequest[] }>('/api/v0/software-requests'),
 	createSoftwareRequest: (body: { title: string; description: string; reason: string }) =>
-		postJsonBody<SoftwareRequest>('/api/v0/software-requests', body)
+		postJsonBody<SoftwareRequest>('/api/v0/software-requests', body),
+
+	// Local-operations (§8). getLocalConfig returns {} when the file is absent;
+	// saveLocalConfig merges the sent tables over any existing file server-side
+	// (unmanaged tables/keys survive). An `unconfigured` ApiError means no
+	// WORKSPACE_DIR — the page shows the CLI fallback instead of the form.
+	getLocalStatus: () => getJson<LocalStatus>('/api/v0/local/status'),
+	getLocalConfig: () => getJson<LocalConfig>('/api/v0/local/config'),
+	saveLocalConfig: (config: ExperimentConfigTables) =>
+		postJsonBody<{ written: string; config: ExperimentConfigTables }>(
+			'/api/v0/local/config',
+			config
+		)
 };

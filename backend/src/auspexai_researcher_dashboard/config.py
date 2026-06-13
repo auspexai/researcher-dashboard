@@ -41,9 +41,30 @@ class ResearcherDashboardConfig:
     static_dir: Path
     key_path: Path
     open_browser: bool
+    # Local-operations (§8 browser-driven stand-up). The dashboard's first
+    # surfaces that touch the researcher's OWN machine rather than proxying the
+    # coordinator. Both default OFF — a monitor-only dashboard never grows a
+    # local footprint unless the researcher opts in:
+    #   - workspace_dir: the experiment working dir (holds experiment.toml +
+    #     pkg/). Unset ⇒ the config editor (Layer 2) is unavailable.
+    #   - local_exec_enabled: the deliberate altitude step — lets the dashboard
+    #     SHELL the tenant SDK (build/submit/run, Layer 3). Unset ⇒ exec is off
+    #     even when a workspace is configured (editing config is lower-stakes
+    #     than executing it).
+    workspace_dir: Path | None = None
+    local_exec_enabled: bool = False
+
+    @property
+    def experiment_toml_path(self) -> Path | None:
+        return (self.workspace_dir / "experiment.toml") if self.workspace_dir else None
+
+    @property
+    def pkg_dir(self) -> Path | None:
+        return (self.workspace_dir / "pkg") if self.workspace_dir else None
 
     @classmethod
     def from_env(cls) -> ResearcherDashboardConfig:
+        ws = os.environ.get("WORKSPACE_DIR")
         return cls(
             coord_url=os.environ.get("COORD_URL", "https://coord.auspexai.network"),
             bind_host=os.environ.get("HOST", "127.0.0.1"),
@@ -56,4 +77,6 @@ class ResearcherDashboardConfig:
             ),
             key_path=Path(os.environ.get("AUSPEXAI_TENANT_KEY", str(_default_key_path()))),
             open_browser=os.environ.get("OPEN_BROWSER", "true").lower() in ("1", "true", "yes"),
+            workspace_dir=Path(ws).expanduser() if ws else None,
+            local_exec_enabled=os.environ.get("LOCAL_EXEC", "").lower() in ("1", "true", "yes"),
         )
