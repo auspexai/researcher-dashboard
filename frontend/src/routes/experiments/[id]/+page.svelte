@@ -13,6 +13,7 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ActivityHeart from '$lib/components/ActivityHeart.svelte';
+	import LifecycleTimeline from '$lib/components/LifecycleTimeline.svelte';
 
 	const id = $derived(page.params.id);
 	let coordReachable = $state<boolean | null>(null);
@@ -283,6 +284,8 @@
 		<StatusBadge status={experiment.status} />
 	</div>
 	<p class="id">{experiment.experiment_id}</p>
+
+	<LifecycleTimeline {experiment} {activity} />
 
 	<ActivityHeart {experiment} {activity} {coordReachable} />
 

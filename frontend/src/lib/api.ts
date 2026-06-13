@@ -103,6 +103,15 @@ export interface Experiment {
 	// M-Results retention state (tenant-scoped).
 	retention_hold?: boolean;
 	results_collected_at?: string;
+	// §9 #48 admission-assessment provenance (tenant-scoped; the researcher sees
+	// its OWN verdict). Drives the lifecycle timeline. assessed_by is operator-
+	// only so it never arrives here.
+	research_class?: string | null;
+	assessment_decision?: 'auto' | 'review' | string | null;
+	assessment_tier?: number | null;
+	assessment_rationale?: string | null;
+	assessment_envelope?: { name: string; passed: boolean; detail: string }[] | null;
+	assessed_at?: string | null;
 }
 
 export interface WorkUnits {
