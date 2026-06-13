@@ -163,7 +163,11 @@
 	<div class="vitals">
 		<span class="vital" class:bad={coordReachable === false}>
 			<i class="dot" class:ok={coordReachable === true} class:down={coordReachable === false}></i>
-			coordinator {coordReachable === false ? 'unreachable' : 'up'}
+			coordinator {coordReachable === false
+				? 'unreachable'
+				: coordReachable === true
+					? 'up'
+					: 'checking…'}
 		</span>
 		<span class="vital">
 			<i class="dot" class:ok={contributors > 0}></i>

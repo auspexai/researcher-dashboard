@@ -204,12 +204,16 @@
 		if (!current) return;
 		const tick = async () => {
 			const st = experiment?.status;
-			if (st === 'completed' || st === 'aborted' || st === 'archived') return;
-			try {
-				activity = await api.getExperimentActivity(current);
-				experiment = await api.getExperiment(current);
-			} catch {
-				/* transient — keep prior */
+			// Refetch the experiment/activity only while it's still live — but
+			// coordinator health is INDEPENDENT of the experiment's lifecycle, so
+			// always probe it (a completed experiment still has a live coordinator).
+			if (st !== 'completed' && st !== 'aborted' && st !== 'archived') {
+				try {
+					activity = await api.getExperimentActivity(current);
+					experiment = await api.getExperiment(current);
+				} catch {
+					/* transient — keep prior */
+				}
 			}
 			try {
 				const h = await (await fetch('/api/v0/health')).json();
@@ -218,6 +222,7 @@
 				coordReachable = false;
 			}
 		};
+		tick(); // immediate — no 6s window of unknown coordinator status
 		const interval = setInterval(tick, 6000);
 		return () => clearInterval(interval);
 	});
