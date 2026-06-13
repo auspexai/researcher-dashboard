@@ -25,6 +25,7 @@
 		contact: '',
 		model_id: '',
 		model_version: '1.0',
+		research_class: '',
 		local_weights_required: true,
 		replication: 1,
 		duration_hours: 1,
@@ -54,6 +55,7 @@
 		form.contact = str(e.contact);
 		form.model_id = str(e.model_id);
 		form.model_version = str(e.model_version) || '1.0';
+		form.research_class = str(e.research_class);
 		form.local_weights_required = e.local_weights_required !== false; // default true
 		form.replication = num(e.replication, 1);
 		form.duration_hours = num(e.duration_hours, 1);
@@ -105,6 +107,7 @@
 			['contact', form.contact],
 			['model_id', form.model_id],
 			['model_version', form.model_version],
+			['research_class', form.research_class],
 			['research_goal', form.research_goal],
 			['prompt_characteristics', form.prompt_characteristics]
 		];
@@ -299,6 +302,19 @@ auspexai-tenant experiment run    latest --key &lt;key&gt; --doorbell</code></pr
 					>
 					<label>Model ID <input bind:value={form.model_id} placeholder="gemma-3-1b-it-q4" /></label>
 					<label>Model version <input bind:value={form.model_version} /></label>
+					<label
+						>Research class
+						<select bind:value={form.research_class}>
+							<option value="">— unset (→ human review) —</option>
+							<option value="behavioral_drift">behavioral_drift</option>
+							<option value="eval_sweeps">eval_sweeps</option>
+							<option value="quantization_effects">quantization_effects</option>
+							<option value="prompt_sensitivity">prompt_sensitivity</option>
+							<option value="cross_model_comparison">cross_model_comparison</option>
+							<option value="refusal_boundary_mapping">refusal_boundary_mapping (elevated)</option>
+							<option value="other">other</option>
+						</select></label
+					>
 					<label class="check"
 						><input type="checkbox" bind:checked={form.local_weights_required} /> Local weights required</label
 					>
@@ -485,7 +501,8 @@ auspexai-tenant experiment run    latest --key &lt;key&gt; --doorbell</code></pr
 		color: #f0a868;
 	}
 	input:not([type='checkbox']),
-	textarea {
+	textarea,
+	select {
 		width: 100%;
 		box-sizing: border-box;
 		background: #0a1020;
