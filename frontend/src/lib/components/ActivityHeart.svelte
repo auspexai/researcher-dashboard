@@ -104,8 +104,9 @@
 				target ? ` of ${target}` : ''
 			}`;
 		if (!live) return `${experiment.status} · awaiting the network`;
+		// The contributor COUNT lives in the vitals (with its dot); the line
+		// speaks to the rhythm, not the headcount.
 		const parts: string[] = [];
-		if (contributors > 0) parts.push(`${contributors} worker${contributors === 1 ? '' : 's'} active`);
 		if (lastBeatT != null) parts.push(`last beat ${ago(sinceLastBeatMs)}`);
 		if (nextBeatT != null) {
 			const due = nextBeatT - now;
