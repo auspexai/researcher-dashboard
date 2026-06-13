@@ -31,6 +31,9 @@
 			experiment.status === 'aborted' ||
 			experiment.status === 'archived'
 	);
+	// Terminal outcome — success vs failure should read at a glance, not both gray.
+	const completed = $derived(experiment.status === 'completed');
+	const aborted = $derived(experiment.status === 'aborted');
 
 	// Sample completions_total on every activity update (each poll reassigns the
 	// prop, so this re-runs even across idle intervals — that's what draws the
@@ -126,7 +129,13 @@
 
 <section class="heart" class:live class:terminal>
 	<header>
-		<div class="pulse-dot" class:beating={live && !betweenBeats} class:between={betweenBeats}></div>
+		<div
+			class="pulse-dot"
+			class:beating={live && !betweenBeats}
+			class:between={betweenBeats}
+			class:done-ok={completed}
+			class:done-bad={aborted}
+		></div>
 		<h3>Activity</h3>
 		<span class="status">{experiment.status ?? 'unknown'}</span>
 	</header>
@@ -147,7 +156,9 @@
 		{/if}
 	</div>
 
-	<p class="narration" class:reassure={betweenBeats}>{narration}</p>
+	<p class="narration" class:reassure={betweenBeats} class:good={completed} class:bad={aborted}>
+		{narration}
+	</p>
 
 	<div class="vitals">
 		<span class="vital" class:bad={coordReachable === false}>
@@ -217,6 +228,12 @@
 		border-radius: 50%;
 		background: #2a3450;
 	}
+	.pulse-dot.done-ok {
+		background: #6ee7b7;
+	}
+	.pulse-dot.done-bad {
+		background: #fca5a5;
+	}
 	.pulse-dot.beating {
 		background: #67e8f9;
 		box-shadow: 0 0 0 0 rgba(103, 232, 249, 0.6);
@@ -269,6 +286,12 @@
 	}
 	.narration.reassure {
 		color: #4a7dff;
+	}
+	.narration.good {
+		color: #6ee7b7;
+	}
+	.narration.bad {
+		color: #fca5a5;
 	}
 	.vitals {
 		display: flex;
