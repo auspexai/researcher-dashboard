@@ -11,11 +11,16 @@
 	let {
 		experiment,
 		activity,
-		coordReachable = null
+		coordReachable = null,
+		coordReconnecting = false
 	}: {
 		experiment: Experiment;
 		activity: ExperimentActivity | null;
 		coordReachable?: boolean | null;
+		// Debounced intermediate: a probe just missed (e.g. a coordinator restart)
+		// but we haven't hit the unreachable threshold — show "reconnecting…", not
+		// a red alarm, so a routine deploy doesn't look like an outage.
+		coordReconnecting?: boolean;
 	} = $props();
 
 	type Sample = { t: number; c: number };
@@ -161,13 +166,20 @@
 	</p>
 
 	<div class="vitals">
-		<span class="vital" class:bad={coordReachable === false}>
-			<i class="dot" class:ok={coordReachable === true} class:down={coordReachable === false}></i>
-			coordinator {coordReachable === false
-				? 'unreachable'
-				: coordReachable === true
-					? 'up'
-					: 'checking…'}
+		<span class="vital" class:bad={coordReachable === false && !coordReconnecting}>
+			<i
+				class="dot"
+				class:ok={coordReachable === true && !coordReconnecting}
+				class:down={coordReachable === false && !coordReconnecting}
+				class:reconnecting={coordReconnecting}
+			></i>
+			coordinator {coordReconnecting
+				? 'reconnecting…'
+				: coordReachable === false
+					? 'unreachable'
+					: coordReachable === true
+						? 'up'
+						: 'checking…'}
 		</span>
 		<span class="vital">
 			<i class="dot" class:ok={contributors > 0}></i>
@@ -326,6 +338,21 @@
 	}
 	.dot.down {
 		background: #fca5a5;
+	}
+	.dot.reconnecting {
+		background: #fbbf24;
+		animation: pulse-amber 1.2s ease-out infinite;
+	}
+	@keyframes pulse-amber {
+		0% {
+			box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.5);
+		}
+		70% {
+			box-shadow: 0 0 0 5px rgba(251, 191, 36, 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+		}
 	}
 	.metrics {
 		display: flex;

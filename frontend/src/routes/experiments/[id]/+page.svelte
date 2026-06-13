@@ -17,6 +17,9 @@
 
 	const id = $derived(page.params.id);
 	let coordReachable = $state<boolean | null>(null);
+	let coordReconnecting = $state(false);
+	let coordFails = 0;
+	const COORD_FAIL_THRESHOLD = 2; // consecutive misses before "unreachable" (smooths a deploy)
 
 	let experiment = $state<Experiment | null>(null);
 	let workUnits = $state<WorkUnits | null>(null);
@@ -216,11 +219,25 @@
 					/* transient — keep prior */
 				}
 			}
+			// Debounced: a single failed probe (e.g. a ~3s coordinator restart)
+			// reads as "reconnecting…", not a red "unreachable" alarm. Only after
+			// COORD_FAIL_THRESHOLD consecutive misses do we surface unreachable.
+			let ok: boolean;
 			try {
 				const h = await (await fetch('/api/v0/health')).json();
-				coordReachable = h?.coord?.reachable ?? true;
+				ok = h?.coord?.reachable !== false;
 			} catch {
+				ok = false;
+			}
+			if (ok) {
+				coordReachable = true;
+				coordReconnecting = false;
+				coordFails = 0;
+			} else if (++coordFails >= COORD_FAIL_THRESHOLD) {
 				coordReachable = false;
+				coordReconnecting = false;
+			} else {
+				coordReconnecting = true; // keep the last reachable value; don't alarm yet
 			}
 		};
 		tick(); // immediate — no 6s window of unknown coordinator status
@@ -287,7 +304,7 @@
 
 	<LifecycleTimeline {experiment} {activity} />
 
-	<ActivityHeart {experiment} {activity} {coordReachable} />
+	<ActivityHeart {experiment} {activity} {coordReachable} {coordReconnecting} />
 
 	<!-- A state-unavailable action: shown disabled with the reason it's not
 	     usable yet, so the full lifecycle vocabulary stays discoverable. -->
