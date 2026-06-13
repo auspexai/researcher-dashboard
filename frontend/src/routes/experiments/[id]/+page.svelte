@@ -12,8 +12,10 @@
 	} from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import ActivityHeart from '$lib/components/ActivityHeart.svelte';
 
 	const id = $derived(page.params.id);
+	let coordReachable = $state<boolean | null>(null);
 
 	let experiment = $state<Experiment | null>(null);
 	let workUnits = $state<WorkUnits | null>(null);
@@ -193,6 +195,33 @@
 		load(current);
 	});
 
+	// Live pulse: while the experiment is dispatching, refresh the activity
+	// snapshot every 6s so the heart accumulates a rhythm (surface_liveness_and_
+	// activity_view_design.md). The status flips are read inside the tick (not the
+	// effect body) so the interval isn't torn down/recreated on every refresh.
+	$effect(() => {
+		const current = id;
+		if (!current) return;
+		const tick = async () => {
+			const st = experiment?.status;
+			if (st === 'completed' || st === 'aborted' || st === 'archived') return;
+			try {
+				activity = await api.getExperimentActivity(current);
+				experiment = await api.getExperiment(current);
+			} catch {
+				/* transient — keep prior */
+			}
+			try {
+				const h = await (await fetch('/api/v0/health')).json();
+				coordReachable = h?.coord?.reachable ?? true;
+			} catch {
+				coordReachable = false;
+			}
+		};
+		const interval = setInterval(tick, 6000);
+		return () => clearInterval(interval);
+	});
+
 	// Load results on route change or when the consensus/raw toggle flips.
 	$effect(() => {
 		const current = id;
@@ -259,6 +288,8 @@
 		<StatusBadge status={experiment.status} />
 	</div>
 	<p class="id">{experiment.experiment_id}</p>
+
+	<ActivityHeart {experiment} {activity} {coordReachable} />
 
 	<!-- A state-unavailable action: shown disabled with the reason it's not
 	     usable yet, so the full lifecycle vocabulary stays discoverable. -->
