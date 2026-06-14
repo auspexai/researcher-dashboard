@@ -446,6 +446,56 @@
 				<span class="k">Merkle root</span>
 				<span class="v mono">{attestation.merkle_root ?? '—'}</span>
 			</div>
+			{#if attestation.governance_footprint}
+				{@const fp = attestation.governance_footprint}
+				<div class="footprint">
+					<h3>Apparatus footprint</h3>
+					<p class="muted small">
+						The governance conditions behind this evidence — so you can correct for apparatus
+						influence. Coordinator-asserted, COSE-signed in the predicate.
+					</p>
+					<div class="field">
+						<span class="k">Producing tenant</span>
+						<span class="v"
+							>tier {fp.tenant?.tier ?? '—'} · identity {fp.tenant?.identity_gate ?? '—'}</span
+						>
+					</div>
+					<div class="field">
+						<span class="k">Replication</span>
+						<span class="v">
+							{fp.replication?.integrity_policy ?? '—'} (×{fp.replication?.replication_factor ?? '—'})
+							{#if fp.replication?.sub_floor}<span class="badge warn">below tier floor (forced)</span
+								>{:else if fp.replication?.tier_floored}<span class="badge">at tier floor</span
+								>{/if}
+						</span>
+					</div>
+					<div class="field">
+						<span class="k">Approval path</span>
+						<span class="v">
+							experiment {fp.approval?.experiment ?? '—'}{#if fp.approval?.assessment}
+								· {fp.approval.assessment.research_class}{/if}{#if fp.approval?.promotion?.tier_set_by}
+								· promotion by {fp.approval.promotion.tier_set_by}{/if}
+						</span>
+					</div>
+					<div class="field">
+						<span class="k">Independence ({fp.independence?.basis ?? '—'})</span>
+						<span class="v"
+							>{fp.independence?.distinct_accounts ?? 0} accounts · {fp.independence
+								?.distinct_workers ?? 0} workers · {fp.independence?.distinct_served_models ?? 0} models</span
+						>
+					</div>
+					<div class="field wide">
+						<span class="k">Corroboration basis</span>
+						<span class="v badges">
+							{#each Object.entries(fp.integrity_basis?.counts ?? {}) as [basis, n]}
+								{#if n > 0}<span class="badge" class:diverged={basis === 'diverged'}
+										>{basis.replace(/_/g, ' ')}: {n}</span
+									>{/if}
+							{/each}
+						</span>
+					</div>
+				</div>
+			{/if}
 		</section>
 	{:else if attestationError && attestationError.kind !== 'not_ready'}
 		<p class="muted">Attestation unavailable: {attestationError.message}</p>
@@ -901,6 +951,46 @@
 		font-family: ui-monospace, monospace;
 		font-size: 0.78rem;
 		color: #b8bfd0;
+	}
+	/* ── Apparatus footprint (firewall #2) ── */
+	.footprint {
+		margin-top: 0.9rem;
+		padding-top: 0.7rem;
+		border-top: 1px solid #2a3142;
+	}
+	.footprint h3 {
+		font-size: 0.9rem;
+		margin: 0 0 0.2rem;
+		color: #cdd5e6;
+	}
+	.footprint .small {
+		font-size: 0.74rem;
+		margin: 0 0 0.5rem;
+		max-width: 52rem;
+	}
+	.badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+	}
+	.badge {
+		display: inline-block;
+		padding: 0.05rem 0.4rem;
+		border-radius: 0.6rem;
+		background: #232a3a;
+		color: #9fb0d0;
+		font-size: 0.72rem;
+		border: 1px solid #2f3850;
+	}
+	.badge.warn {
+		background: #3a2a18;
+		color: #fbbf24;
+		border-color: #5a4020;
+	}
+	.badge.diverged {
+		background: #3a1f2a;
+		color: #f3a0bb;
+		border-color: #5a2f3f;
 	}
 	/* ── Integrity panel (R-D inc-1) ── */
 	.att-status {

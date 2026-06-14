@@ -217,6 +217,35 @@ export interface Attestation {
 	rekor_entry_uuid?: string | null;
 	rekor_inclusion_proof?: Record<string, unknown> | null;
 	partial?: boolean;
+	// Firewall #2: the coordinator-asserted, COSE-signed governance footprint —
+	// the apparatus conditions behind this evidence, so a researcher can correct
+	// for apparatus influence. Absent on pre-firewall attestations.
+	governance_footprint?: GovernanceFootprint | null;
+	diverged_units?: { unit_id: string; result_hashes?: string[] }[] | null;
+}
+
+// Firewall #2 apparatus footprint (governance conditions on the evidence).
+export interface GovernanceFootprint {
+	schema_version?: number;
+	tenant?: { tier?: string; identity_gate?: string };
+	replication?: {
+		integrity_policy?: string;
+		replication_factor?: number;
+		tier_floored?: boolean;
+		sub_floor?: boolean;
+	};
+	approval?: {
+		experiment?: string; // 'auto' | 'human'
+		assessment?: { research_class?: string; tier?: number } | null;
+		promotion?: { tier_set_by?: string | null };
+	};
+	independence?: {
+		basis?: string;
+		distinct_accounts?: number;
+		distinct_workers?: number;
+		distinct_served_models?: number;
+	};
+	integrity_basis?: { counts?: Record<string, number> };
 }
 
 // The evidence bundle (coordinator GET .../results/export; EB-1, §9 #47).
