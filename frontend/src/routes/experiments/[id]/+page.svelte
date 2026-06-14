@@ -498,15 +498,19 @@
 	     researcher's OWN-account workers backing this experiment. Most
 	     researchers run none, so the section simply isn't there for them. -->
 	{#if activity?.own_workers && activity.own_workers.length > 0}
+		{@const backing = activity.own_workers.filter(
+			(w) => w.experiment_eligibility === 'backing'
+		).length}
 		<h2>Your workers</h2>
 		<p class="muted">
-			{activity.own_workers.length} of your own-account {activity.own_workers.length === 1
+			{backing} of your {activity.own_workers.length} account {activity.own_workers.length === 1
 				? 'worker is'
-				: 'workers are'} backing this experiment (other contributors are anonymized).
+				: 'workers are'} backing this experiment; the rest are shown with why they aren't
+			(other contributors are anonymized).
 		</p>
 			<table class="workers">
 				<thead>
-					<tr><th>Worker</th><th>Tier</th><th>Status</th><th>Results</th><th>Last activity</th></tr>
+					<tr><th>Worker</th><th>Tier</th><th>This experiment</th><th>Status</th><th>Results</th><th>Last activity</th></tr>
 				</thead>
 				<tbody>
 					{#each activity.own_workers as w (w.worker_id)}
@@ -516,6 +520,16 @@
 								<span class="mono pk">{w.worker_pubkey_hex.slice(0, 16)}…</span>
 							</td>
 							<td>T{w.trust_tier}</td>
+							<td>
+								<span class="elig elig-{w.experiment_eligibility ?? 'eligible'}"
+									>{w.experiment_eligibility ?? 'eligible'}</span
+								>
+								{#if w.experiment_eligibility === 'ineligible' && w.experiment_ineligible_reason}
+									<div class="reason" title="Why this worker can't serve this experiment.">
+										{w.experiment_ineligible_reason}
+									</div>
+								{/if}
+							</td>
 							<td>
 								<StatusBadge status={w.status} />
 								{#if w.status === 'quarantined' && w.quarantine_reason}
@@ -852,6 +866,24 @@
 	}
 	.wid {
 		color: #e6e9f0;
+	}
+	.elig {
+		display: inline-block;
+		padding: 0.05rem 0.5rem;
+		border-radius: 3px;
+		font-size: 0.78rem;
+	}
+	.elig-backing {
+		background: #14532d;
+		color: #86efac;
+	}
+	.elig-eligible {
+		background: #1e3a5f;
+		color: #93c5fd;
+	}
+	.elig-ineligible {
+		background: #3f3f46;
+		color: #d4d4d8;
 	}
 	.pk {
 		display: block;

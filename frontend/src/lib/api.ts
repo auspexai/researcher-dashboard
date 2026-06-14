@@ -147,6 +147,10 @@ export interface OwnWorkerActivity {
 	status?: WorkerStatus;
 	quarantine_reason?: string | null;
 	last_heartbeat_at?: string;
+	// R-D #2: this worker's role for THIS experiment — so an account worker that
+	// can't serve it shows with a reason instead of vanishing from the list.
+	experiment_eligibility?: 'backing' | 'eligible' | 'ineligible';
+	experiment_ineligible_reason?: string | null;
 }
 
 // Mirrors the coordinator's ExperimentActivityResponse (R-D3). The aggregate
