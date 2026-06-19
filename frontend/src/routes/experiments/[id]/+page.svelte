@@ -4,6 +4,7 @@
 		api,
 		ApiError,
 		type Attestation,
+		type BundleVerification,
 		type Experiment,
 		type ExperimentActivity,
 		type Receipt,
@@ -51,6 +52,9 @@
 	let resultsError = $state<ApiError | null>(null);
 	let exporting = $state(false);
 	let exportMsg = $state<string | null>(null);
+	// Local verify-on-collect: the dashboard backend runs the SDK's verify_bundle
+	// on the collected bundle (on this machine) and returns the named-check result.
+	let verification = $state<BundleVerification | null>(null);
 
 	const fmt = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
 
@@ -103,8 +107,9 @@
 		if (!current || exporting) return;
 		exporting = true;
 		exportMsg = null;
+		verification = null;
 		try {
-			const bundle = await api.exportResults(current);
+			const { bundle, verification: v } = await api.exportResults(current);
 			const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement('a');
@@ -112,12 +117,13 @@
 			a.download = `${current}-bundle.json`;
 			a.click();
 			URL.revokeObjectURL(url);
+			verification = v;
 			const t = bundle.transfer;
 			const unified = t?.root_kind?.startsWith('result-set');
 			exportMsg = t
 				? `Collected — data custody transferred to you (transfer ${t.transfer_id}${
 						unified ? '; custody signs the attested merkle root' : ''
-					}). Saved ${current}-bundle.json — re-verify it offline anytime with: auspexai-tenant bundle verify ${current}-bundle.json`
+					}). Saved ${current}-bundle.json.`
 				: `Saved ${current}-bundle.json.`;
 			await load(current, { silent: true }); // refresh results_collected_at
 		} catch (e) {
@@ -662,6 +668,37 @@
 	{#if exportMsg}
 		<p class="export-msg">{exportMsg}</p>
 	{/if}
+	{#if verification}
+		<div class="verification" class:bad={!verification.ok}>
+			<p class="verif-head">
+				<span class="vmark">{verification.ok ? '✓' : '✗'}</span>
+				{verification.ok ? 'Verified on this machine' : 'Verification FAILED'}
+			</p>
+			{#if verification.error}<p class="verif-err">{verification.error}</p>{/if}
+			<ul class="verif-checks">
+				{#each verification.checks as c (c.name)}
+					<li class="vcheck {c.state}">
+						<span class="vmark">{c.state === 'pass' ? '✓' : c.state === 'fail' ? '✗' : '–'}</span>
+						<span class="vname">{c.name}</span>
+						{#if c.detail}<span class="vdetail">{c.detail}</span>{/if}
+					</li>
+				{/each}
+				<li class="vcheck {verification.rekor.state === 'anchored' ? 'pass' : 'na'}">
+					<span class="vmark">{verification.rekor.state === 'anchored' ? '✓' : '⧖'}</span>
+					<span class="vname">Rekor anchor</span>
+					<span class="vdetail"
+						>{verification.rekor.state === 'anchored'
+							? `logIndex ${verification.rekor.log_index}`
+							: 'pending — lands on the hourly Rekor sweep'}</span
+					>
+				</li>
+			</ul>
+			<p class="verif-foot">
+				Verified locally by the SDK on this machine. Reproduce it independently anytime:
+				<code>auspexai-tenant bundle verify {id}-bundle.json</code>
+			</p>
+		</div>
+	{/if}
 	{#if resultsError}
 		<p class="muted">Results unavailable: {resultsError.message}</p>
 	{:else if results === null && resultsLoading}
@@ -977,6 +1014,16 @@
 		margin-top: 0.9rem;
 		padding-top: 0.7rem;
 		border-top: 1px solid #2a3142;
+		/* Lay the fields out in the same auto-fit grid the rest of the page uses
+		   — they were stacking vertically (each field a full-width row) because
+		   .footprint had no grid, unlike the attestation fields above. */
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 0.6rem 0.75rem;
+	}
+	.footprint h3,
+	.footprint .small {
+		grid-column: 1 / -1;
 	}
 	.footprint h3 {
 		font-size: 0.9rem;
@@ -1011,6 +1058,77 @@
 		background: #3a1f2a;
 		color: #f3a0bb;
 		border-color: #5a2f3f;
+	}
+	/* ── Local verification panel (verify-on-collect) ── */
+	.verification {
+		margin: 0.6rem 0 0;
+		padding: 0.6rem 0.8rem;
+		border: 1px solid #1f5a3a;
+		border-radius: 6px;
+		background: #0d1a14;
+	}
+	.verification.bad {
+		border-color: #5e1f28;
+		background: #1a0e12;
+	}
+	.verif-head {
+		margin: 0 0 0.4rem;
+		font-weight: 600;
+		font-size: 0.85rem;
+		color: #6ee7b7;
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+	.verification.bad .verif-head {
+		color: #fca5a5;
+	}
+	.verif-err {
+		margin: 0 0 0.4rem;
+		font-size: 0.78rem;
+		color: #fca5a5;
+	}
+	.verif-checks {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+	.vcheck {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+		font-size: 0.8rem;
+		color: #c4ccdc;
+	}
+	.vcheck .vmark {
+		width: 1rem;
+		flex: none;
+		text-align: center;
+	}
+	.vcheck.pass .vmark {
+		color: #6ee7b7;
+	}
+	.vcheck.fail,
+	.vcheck.fail .vmark {
+		color: #fca5a5;
+	}
+	.vcheck.na .vmark {
+		color: #8b93a7;
+	}
+	.vdetail {
+		color: #8b93a7;
+		font-size: 0.74rem;
+	}
+	.verif-foot {
+		margin: 0.5rem 0 0;
+		font-size: 0.72rem;
+		color: #8b93a7;
+	}
+	.verif-foot code {
+		font-size: 0.72rem;
 	}
 	/* ── Integrity panel (R-D inc-1) ── */
 	.att-status {

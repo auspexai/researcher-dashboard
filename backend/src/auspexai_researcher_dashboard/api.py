@@ -11,10 +11,60 @@ A `CoordinatorError` is rendered as a stable error envelope the SPA branches on:
 
 from __future__ import annotations
 
+from typing import Any
+
+from auspexai_tenant.evidence import BundleVerification, verify_bundle
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from .coordinator import CoordinatorClient, CoordinatorError
+
+
+def _rekor_status(bundle: dict[str, Any]) -> dict[str, Any]:
+    """The attestation's transparency-log anchor, read straight from the bundle —
+    `pending` until the coordinator's hourly Rekor sweep anchors it, so a fresh
+    run reads as 'pending', not 'failed'."""
+    att = bundle.get("attestation")
+    if isinstance(att, dict):
+        idx = att.get("rekor_log_index") or (att.get("rekor") or {}).get("log_index")
+        if idx:
+            return {"state": "anchored", "log_index": idx}
+    return {"state": "pending"}
+
+
+def _shape_verification(v: BundleVerification, bundle: dict[str, Any]) -> dict[str, Any]:
+    """Shape an SDK `BundleVerification` (run locally, on this machine) for the UI:
+    overall verdict + a named-check list. Verification is OFFLINE by design so a
+    not-yet-anchored attestation never reads as a failure; the Rekor anchor is
+    surfaced separately as status."""
+
+    def tri(x: bool | None) -> str:
+        return "na" if x is None else ("pass" if x else "fail")
+
+    att = v.attestation
+    ws = v.worker_signatures
+    checks: list[dict[str, Any]] = [
+        {"name": "Custody signature", "state": tri(v.transfer_signature_valid)},
+        {
+            "name": "Custody signer",
+            "state": tri(v.transfer_signer_authorized),
+            "detail": v.signer_pin_mode
+            + ("" if v.signer_grounded else " · not externally grounded"),
+        },
+        {"name": "Attestation", "state": tri(att.ok if att is not None else None)},
+        {"name": "Root unification", "state": tri(v.root_unified)},
+        {"name": "Completeness", "state": tri(v.completeness_ok)},
+        {"name": "Input binding", "state": tri(v.inputs_bound_ok)},
+        {"name": "Apparatus footprint", "state": tri(v.footprint_ok)},
+        {
+            "name": "Worker signatures",
+            "state": "pass" if ws.ok else "fail",
+            "detail": f"{ws.verified} verified"
+            + (f" · {len(ws.failed)} FAILED" if ws.failed else ""),
+        },
+    ]
+    return {"ok": v.ok, "checks": checks, "rekor": _rekor_status(bundle)}
 
 
 def build_api_router() -> APIRouter:
@@ -106,13 +156,32 @@ def build_api_router() -> APIRouter:
     async def export_experiment_results(request: Request, experiment_id: str) -> JSONResponse:
         """Collect the evidence bundle (EB-1: consensus payloads + work-unit
         inputs + worker signatures + receipts + manifest + the result-set
-        attestation with its Rekor anchor + a signed custody record). Collecting
-        stamps `results_collected_at` coordinator-side and transfers data
-        custody to the researcher — so the SPA gates this behind an explicit
-        action. A 409 (`conflict`) here is the verify-on-export tamper alarm:
-        the coordinator refused to sign custody over a set that no longer
-        reproduces the attested root."""
-        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/results/export")
+        attestation with its Rekor anchor + a signed custody record), THEN verify
+        it locally — the SDK's `verify_bundle` runs on THIS machine — so the click
+        runs the whole attestation chain (signatures, attestation, root unify,
+        completeness, worker sigs), not just the download. Returns
+        {bundle, verification}; the saved bundle is the coordinator's verbatim, so
+        `auspexai-tenant bundle verify` reproduces this independently. Collecting
+        stamps `results_collected_at` and transfers data custody. A 409
+        (`conflict`) is the verify-on-export tamper alarm (coordinator refused to
+        re-sign custody over a changed set)."""
+        try:
+            bundle = await _client(request).get_json(
+                f"/api/v0/experiments/{experiment_id}/results/export"
+            )
+        except CoordinatorError as e:
+            return _envelope(e)
+        try:
+            v = await run_in_threadpool(verify_bundle, bundle)
+            verification = _shape_verification(v, bundle)
+        except Exception as e:  # a malformed/newer bundle is itself a failed verify
+            verification = {
+                "ok": False,
+                "error": str(e),
+                "checks": [],
+                "rekor": _rekor_status(bundle),
+            }
+        return JSONResponse(content={"bundle": bundle, "verification": verification})
 
     @router.get("/experiments/{experiment_id}/attestation")
     async def get_experiment_attestation(request: Request, experiment_id: str) -> JSONResponse:

@@ -92,7 +92,12 @@ def test_export_signed_and_proxied_verbatim(tmp_path: Path) -> None:
 
     response = client.get("/api/v0/experiments/exp-1/results/export")
     assert response.status_code == 200
-    assert response.json() == bundle
+    body = response.json()
+    # The bundle is still passed through VERBATIM — now under `bundle`, with the
+    # local verify_bundle result alongside it. This dummy bundle (invalid sigs,
+    # no schema) fails verification, which is exactly what we want to surface.
+    assert body["bundle"] == bundle
+    assert body["verification"]["ok"] is False
     assert f'keyid="{pubkey}"' in rec.requests[0].headers["Signature-Input"]
     assert str(rec.requests[0].url) == f"{COORD}/api/v0/experiments/exp-1/results/export"
 

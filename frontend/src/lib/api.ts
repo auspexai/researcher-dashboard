@@ -251,6 +251,26 @@ export interface GovernanceFootprint {
 	containment?: { required?: string; ran_under?: string[] };
 }
 
+export interface VerificationCheck {
+	name: string;
+	state: 'pass' | 'fail' | 'na';
+	detail?: string;
+}
+
+// The named-check result of the local verifier (auspexai-tenant verify_bundle),
+// run by the dashboard backend on THIS machine when a bundle is collected.
+export interface BundleVerification {
+	ok: boolean;
+	checks: VerificationCheck[];
+	rekor: { state: 'anchored' | 'pending'; log_index?: number | string };
+	error?: string;
+}
+
+export interface ExportResponse {
+	bundle: ExportBundle;
+	verification: BundleVerification;
+}
+
 // The evidence bundle (coordinator GET .../results/export; EB-1, §9 #47).
 // Self-contained and offline-verifiable: consensus payloads + worker
 // signatures + work-unit inputs + receipts + the manifest + the result-set
@@ -455,7 +475,7 @@ export const api = {
 	// alarm — the coordinator refused to sign custody over a set that fails
 	// verification.
 	exportResults: (id: string) =>
-		getJson<ExportBundle>(`/api/v0/experiments/${encodeURIComponent(id)}/results/export`),
+		getJson<ExportResponse>(`/api/v0/experiments/${encodeURIComponent(id)}/results/export`),
 
 	// The result-set attestation (integrity panel, R-D inc-1). Final for a
 	// completed experiment; `checkpoint: true` asks for a partial
