@@ -396,6 +396,18 @@
 	</section>
 
 	<h2>Integrity</h2>
+	<p class="muted">
+		<strong>What this means:</strong> the apparatus's own disclosures about how this
+		experiment's evidence was produced — corroboration basis, containment, and producer
+		independence. Use them to <em>stratify, don't pool</em>: a process-only result and a
+		consensus-replicated one are different evidence classes. Divergence is recorded, never
+		penalized — it can be the finding. Full guide:
+		<a
+			href="https://github.com/auspexai/tenant-sdk/blob/main/docs/reading_your_evidence.md"
+			target="_blank"
+			rel="noopener">Reading your evidence</a
+		>.
+	</p>
 	{#if attestationLoading}
 		<p class="muted">Loading attestation…</p>
 	{:else if attestation}
