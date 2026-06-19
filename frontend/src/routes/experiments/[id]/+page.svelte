@@ -494,6 +494,14 @@
 							{/each}
 						</span>
 					</div>
+					<div class="field wide">
+						<span class="k">Containment</span>
+						<span class="v"
+							>required <strong>{fp.containment?.required ?? '—'}</strong> · ran under {(
+								fp.containment?.ran_under ?? []
+							).join(', ') || '—'}</span
+						>
+					</div>
 				</div>
 			{/if}
 		</section>

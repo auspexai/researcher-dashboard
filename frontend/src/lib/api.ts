@@ -246,6 +246,9 @@ export interface GovernanceFootprint {
 		distinct_served_models?: number;
 	};
 	integrity_basis?: { counts?: Record<string, number> };
+	// §41 / A2: the containment the apparatus REQUIRED vs the sandbox policies the
+	// consensus workers actually RAN UNDER — so a researcher can stratify by it.
+	containment?: { required?: string; ran_under?: string[] };
 }
 
 // The evidence bundle (coordinator GET .../results/export; EB-1, §9 #47).
