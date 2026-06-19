@@ -34,8 +34,8 @@ _TABLE_ORDER = ("experiment", "executor", "reducer", "work_unit_source", "driver
 
 _HEADER = (
     "# experiment.toml — written by the AuspexAI researcher dashboard.\n"
-    "# [experiment]/[executor]/[reducer]/[work_unit_source] feed\n"
-    "# `auspexai-tenant experiment build pkg/`; [driver] feeds `experiment run`.\n"
+    "# [experiment]/[executor]/[reducer]/[work_unit_source] + [driver] feed\n"
+    "# `auspexai-tenant experiment launch --key <key>` (build + submit + drive).\n"
     "# Editing here regenerates the file (inline comments are not preserved)."
 )
 

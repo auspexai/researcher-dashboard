@@ -266,9 +266,13 @@
 	     CLI stand-up flow (the network-native operation it can't host yet). -->
 	<div class="standup cli">
 		<p class="hd">Stand up an experiment from your workspace</p>
-		<pre><code>auspexai-tenant experiment build  pkg/
-auspexai-tenant experiment submit pkg/ --key &lt;key&gt;
-auspexai-tenant experiment run    latest --key &lt;key&gt; --doorbell</code></pre>
+		<pre><code>auspexai-tenant experiment launch --key &lt;key&gt;</code></pre>
+		<p class="muted">
+			One command — build, submit, wait for maintainer approval, then drive — run from
+			the dir holding your <code>experiment.toml</code>. Prefer to step through it?
+			<code>experiment build pkg/</code> → <code>submit pkg/ --key &lt;key&gt;</code> →
+			<code>run latest --key &lt;key&gt;</code>.
+		</p>
 		<p class="muted">
 			Set <code>WORKSPACE_DIR</code> (to the dir holding <code>experiment.toml</code> and
 			<code>pkg/</code>) to edit the config here instead of by hand.

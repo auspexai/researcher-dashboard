@@ -34,9 +34,9 @@
 	<div class="empty">
 		<p>No experiments yet.</p>
 		<p class="muted">
-			Build one with <code>auspexai-tenant experiment build pkg/</code>, then
-			<code>experiment submit</code> + <code>experiment run</code> (or use “Set up an experiment”
-			above when a workspace is configured). It appears here once the coordinator accepts it.
+			Stand one up with <code>auspexai-tenant experiment launch --key &lt;key&gt;</code> (or use
+			“Set up an experiment” above when a workspace is configured). It appears here once the
+			coordinator accepts it.
 		</p>
 	</div>
 {:else}
