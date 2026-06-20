@@ -224,6 +224,18 @@ export interface Attestation {
 	diverged_units?: { unit_id: string; result_hashes?: string[] }[] | null;
 }
 
+// Citation / acknowledgment block for a completed experiment (System B, D). The PI
+// is the producing tenant; named_contributors are the volunteers who opted into
+// public attribution, everyone else is folded into anonymous_contributor_count.
+export interface Citation {
+	experiment_id?: string;
+	tenant_id?: string;
+	named_contributors?: string[];
+	anonymous_contributor_count?: number;
+	total_contributor_accounts?: number;
+	acknowledgment?: string;
+}
+
 // Firewall #2 apparatus footprint (governance conditions on the evidence).
 export interface GovernanceFootprint {
 	schema_version?: number;
@@ -487,6 +499,9 @@ export const api = {
 				opts.checkpoint ? '?checkpoint=true' : ''
 			}`
 		),
+
+	getCitation: (id: string) =>
+		getJson<Citation>(`/api/v0/experiments/${encodeURIComponent(id)}/citation`),
 
 	// Demand board (R-D6, §9 #46): the researcher's push surface. GET lists are
 	// tenant-scoped coordinator-side; submits enter the maintainer review queue.

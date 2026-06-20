@@ -5,6 +5,7 @@
 		ApiError,
 		type Attestation,
 		type BundleVerification,
+		type Citation,
 		type Experiment,
 		type ExperimentActivity,
 		type Receipt,
@@ -42,6 +43,14 @@
 	let attestation = $state<Attestation | null>(null);
 	let attestationError = $state<ApiError | null>(null);
 	let attestationLoading = $state(false);
+
+	// Cite this work (System B, D): the contributor/acknowledgment block for a
+	// completed experiment — PI + opted-in volunteers + anonymous count. It's the
+	// publish-prep surface, separate from collection: the researcher returns to it
+	// when their analysis is done and they're ready to put the result in the world.
+	let citation = $state<Citation | null>(null);
+	let citationLoading = $state(false);
+	let citeCopied = $state(false);
 
 	// Results delivery (R-D5). Loaded separately from the experiment so the
 	// consensus/raw toggle + pagination don't refetch the whole page.
@@ -113,6 +122,19 @@
 		}
 	}
 
+	// Best-effort: the citation block for a completed experiment. On failure the
+	// section simply doesn't render — it's never load-bearing for the page.
+	async function loadCitation(current: string) {
+		citationLoading = true;
+		try {
+			citation = await api.getCitation(current);
+		} catch {
+			citation = null;
+		} finally {
+			citationLoading = false;
+		}
+	}
+
 	// Collect the offload bundle: download it + report the custody transfer.
 	async function doExport() {
 		const current = id;
@@ -178,6 +200,7 @@
 			// + canonical there). Mid-run the panel offers a checkpoint instead.
 			if (experiment?.status === 'completed') {
 				await loadAttestation(current);
+				loadCitation(current); // publish-prep block; non-blocking
 			} else if (!opts.silent) {
 				attestation = null;
 				attestationError = null;
@@ -600,6 +623,32 @@
 			</p>
 		{/if}
 	</div>
+
+	{#if experiment.status === 'completed' && citation}
+		<section class="cite">
+			<h2>Cite this work</h2>
+			<p class="muted cite-intro">
+				When your analysis is done and you're ready to publish, this credits the compute
+				behind the result. Volunteers who opted into public attribution appear by name;
+				everyone else is aggregated anonymously. A DOI for the result is coming.
+			</p>
+			<div class="cite-ack">
+				<code>{citation.acknowledgment}</code>
+				<button
+					class="act"
+					onclick={() => {
+						if (citation?.acknowledgment) {
+							navigator.clipboard?.writeText(citation.acknowledgment);
+							citeCopied = true;
+						}
+					}}
+					title="Copy the acknowledgment line"
+				>
+					{citeCopied ? 'Copied ✓' : 'Copy'}
+				</button>
+			</div>
+		</section>
+	{/if}
 
 	<!-- The headline activity numbers (contributors, replication fill, work
 	     units, network size, last beat) now live in the ActivityHeart above.
@@ -1255,6 +1304,31 @@
 		border: 1px solid #1e2638;
 		border-radius: 4px;
 		padding: 0.1rem 0.35rem;
+	}
+	.cite {
+		margin-top: 1.5rem;
+	}
+	.cite-intro {
+		max-width: 46rem;
+	}
+	.cite-ack {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		margin-top: 0.6rem;
+	}
+	.cite-ack code {
+		flex: 1 1 22rem;
+		font-family: ui-monospace, monospace;
+		font-size: 0.82rem;
+		line-height: 1.45;
+		color: #b8bfd0;
+		background: #141b2c;
+		border: 1px solid #1e2638;
+		border-radius: 6px;
+		padding: 0.55rem 0.7rem;
+		word-break: break-word;
 	}
 	.custody-hold {
 		margin: 0.35rem 0 0;

@@ -195,6 +195,15 @@ def build_api_router() -> APIRouter:
         envelope, not an error."""
         return await _proxy(request, f"/api/v0/experiments/{experiment_id}/attestation")
 
+    @router.get("/experiments/{experiment_id}/citation")
+    async def get_experiment_citation(request: Request, experiment_id: str) -> JSONResponse:
+        """The citation / acknowledgment block for one of my completed experiments
+        (System B, D): the producing tenant (PI) + the volunteers who opted into
+        public attribution by name, everyone else aggregated anonymously, plus a
+        ready-to-paste acknowledgment. The researcher uses it when ready to publish —
+        separate from collection; a DOI anchors it later."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/citation")
+
     # ── Lifecycle actions (R-D4) ─────────────────────────────────────────────
     # The four researcher-actionable transitions. approve/archive stay
     # maintainer-only (operator console), so they are deliberately absent here.
