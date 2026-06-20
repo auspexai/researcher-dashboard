@@ -58,6 +58,18 @@
 
 	const fmt = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
 
+	// Plain-language glosses for the footprint's worker/platform codes, surfaced at
+	// the point of use so a researcher needn't keep a glossary (D10b / evidence
+	// literacy). The corroboration-basis codes get an inline meaning too — they're
+	// the load-bearing ones for "stratify, don't pool".
+	const BASIS_GLOSS: Record<string, string> = {
+		process_only: 'one worker ran it — no cross-check',
+		within_cell_exact: 'independent workers produced the identical result',
+		within_cell_tolerance: 'independent workers agreed within tolerance',
+		diverged: 'workers disagreed — recorded, never hidden'
+	};
+	const basisLabel = (b: string) => b.replace(/_/g, ' ');
+
 	// Fetch a page of results (consensus or raw). `reset` replaces the list and
 	// clears the cursor; otherwise it appends the next page (Load more).
 	async function loadResults(
@@ -466,6 +478,7 @@
 			</div>
 			{#if attestation.governance_footprint}
 				{@const fp = attestation.governance_footprint}
+				{@const present = Object.entries(fp.integrity_basis?.counts ?? {}).filter(([, n]) => Number(n) > 0)}
 				<div class="footprint">
 					<h3>Apparatus footprint</h3>
 					<p class="muted small">
@@ -473,13 +486,19 @@
 						influence. Coordinator-asserted, COSE-signed in the predicate.
 					</p>
 					<div class="field">
-						<span class="k">Producing tenant</span>
-						<span class="v"
-							>tier {fp.tenant?.tier ?? '—'} · identity {fp.tenant?.identity_gate ?? '—'}</span
+						<span
+							class="k"
+							title="Tier = the tenant's trust level (T0–T3). Identity gate = how that tenant authenticated."
+							>Producing tenant</span
 						>
+						<span class="v">tier {fp.tenant?.tier ?? '—'} · identity {fp.tenant?.identity_gate ?? '—'}</span>
 					</div>
 					<div class="field">
-						<span class="k">Replication</span>
+						<span
+							class="k"
+							title="Replication policy: trusted = 1 worker per unit, standard = 3, high = 5. The factor is how many independent workers corroborated each unit."
+							>Replication</span
+						>
 						<span class="v">
 							{fp.replication?.integrity_policy ?? '—'} (×{fp.replication?.replication_factor ?? '—'})
 							{#if fp.replication?.sub_floor}<span class="badge warn">below tier floor (forced)</span
@@ -488,7 +507,11 @@
 						</span>
 					</div>
 					<div class="field">
-						<span class="k">Approval path</span>
+						<span
+							class="k"
+							title="The experiment's declared research class and how it was approved (auto vs. who set the tenant tier)."
+							>Approval path</span
+						>
 						<span class="v">
 							experiment {fp.approval?.experiment ?? '—'}{#if fp.approval?.assessment}
 								· {fp.approval.assessment.research_class}{/if}{#if fp.approval?.promotion?.tier_set_by}
@@ -496,7 +519,11 @@
 						</span>
 					</div>
 					<div class="field">
-						<span class="k">Independence ({fp.independence?.basis ?? '—'})</span>
+						<span
+							class="k"
+							title="How producer-independence was counted — by distinct ACCOUNTS, not just workers, so one operator running many workers can't inflate it."
+							>Independence ({fp.independence?.basis ?? '—'})</span
+						>
 						<span class="v"
 							>{fp.independence?.distinct_accounts ?? 0} accounts · {fp.independence
 								?.distinct_workers ?? 0} workers · {fp.independence?.distinct_served_models ?? 0} models</span
@@ -505,12 +532,19 @@
 					<div class="field wide">
 						<span class="k">Corroboration basis</span>
 						<span class="v badges">
-							{#each Object.entries(fp.integrity_basis?.counts ?? {}) as [basis, n]}
-								{#if n > 0}<span class="badge" class:diverged={basis === 'diverged'}
-										>{basis.replace(/_/g, ' ')}: {n}</span
-									>{/if}
+							{#each present as [basis, n]}
+								<span class="badge" class:diverged={basis === 'diverged'} title={BASIS_GLOSS[basis] ?? ''}
+									>{basisLabel(basis)}: {n}</span
+								>
 							{/each}
 						</span>
+						{#if present.length}
+							<span class="basis-gloss">
+								{#each present as [basis]}<span class="bg-item"
+										><strong>{basisLabel(basis)}</strong> — {BASIS_GLOSS[basis] ?? ''}</span
+									>{/each}
+							</span>
+						{/if}
 					</div>
 					<div class="field wide">
 						<span class="k">Containment</span>
@@ -753,6 +787,17 @@
 		<p class="muted">No receipts issued yet — they appear as volunteers complete work.</p>
 	{:else}
 		<p class="muted">{receipts.length} issued</p>
+		{#if attestation?.rekor_log_index}
+			<p class="muted receipts-anchor">
+				Each receipt is a leaf under this experiment's result-set attestation, anchored at
+				<a
+					class="rekor"
+					href="https://search.sigstore.dev/?logIndex={attestation.rekor_log_index}"
+					target="_blank"
+					rel="noopener noreferrer">Rekor log index {attestation.rekor_log_index} ↗</a
+				> — so any receipt here is provably part of that transparency-logged set.
+			</p>
+		{/if}
 		<table class="receipts">
 			<thead>
 				<tr><th>Receipt</th><th>Issued</th></tr>
@@ -1039,6 +1084,24 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.3rem;
+	}
+	.basis-gloss {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		margin-top: 0.35rem;
+		font-size: 0.74rem;
+		color: #8b93a7;
+	}
+	.basis-gloss strong {
+		color: #c4ccdc;
+		font-weight: 600;
+	}
+	/* a glossed label is discoverable — dotted underline + a help cursor */
+	.footprint .k[title] {
+		cursor: help;
+		text-decoration: underline dotted #4a5169;
+		text-underline-offset: 2px;
 	}
 	.badge {
 		display: inline-block;
