@@ -169,6 +169,11 @@ export interface ExperimentActivity {
 	// not retired/quarantined) — the size of the collective backing the network.
 	network_active_workers?: number;
 	own_workers?: OwnWorkerActivity[];
+	// D8 "liveness note": a plain-language explanation of the run's current state
+	// (TENANT_SCOPED). Notably, a C14 regime-3 pause self-explains as a "waiting
+	// for an eligible worker, auto-resumes" hold rather than a silent stall.
+	// Absent when there's nothing to explain (the healthy case).
+	liveness_note?: string;
 }
 
 // One result in the delivery view (R-D5, coordinator M-Results). The science

@@ -347,6 +347,14 @@
 
 	<ActivityHeart {experiment} {activity} {coordReachable} {coordReconnecting} />
 
+	<!-- D8 "liveness note": a paused/stalled run self-explains here — most
+	     importantly, a C14 regime-3 pause reads as a "waiting for an eligible
+	     worker, auto-resumes" hold rather than a silent stall. Only rendered
+	     when the coordinator has something to explain. Amber/attention tone. -->
+	{#if activity?.liveness_note}
+		<p class="liveness-note">{activity.liveness_note}</p>
+	{/if}
+
 	<!-- A state-unavailable action: shown disabled with the reason it's not
 	     usable yet, so the full lifecycle vocabulary stays discoverable. -->
 	{#snippet unavailable(label: string, reason: string, variant: string)}
@@ -1014,6 +1022,19 @@
 	.muted {
 		color: #8b93a7;
 		font-size: 0.85rem;
+	}
+	/* D8 liveness note — amber/attention banner explaining a paused or
+	   thin-corroboration run (matches the page's amber accent: #fbbf24 on a
+	   dark amber-tinted surface, like .badge.warn). */
+	.liveness-note {
+		margin: 0.75rem 0 0;
+		padding: 0.6rem 0.85rem;
+		border: 1px solid #5a4420;
+		border-radius: 6px;
+		background: #3a2a18;
+		color: #fbbf24;
+		font-size: 0.85rem;
+		line-height: 1.4;
 	}
 	.counts {
 		display: flex;
