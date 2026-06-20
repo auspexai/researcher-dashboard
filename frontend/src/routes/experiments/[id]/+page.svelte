@@ -727,6 +727,41 @@
 		</div>
 	{/if}
 
+	<!-- Richer D8: live corroboration health. The cross-check status as it
+	     happens — whether replicas are agreeing or diverging — so a researcher
+	     sees it live, not only retrospectively in the evidence footprint. A
+	     diverged unit's replicas disagreed (nondeterminism or a model/version
+	     skew), which earns no agreement and no receipt; it is recorded, not
+	     model drift. The 0-state is shown calmly on purpose — clean corroboration
+	     is the reassurance. -->
+	{#if activity?.diverged_unit_count != null}
+		{@const diverged = activity.diverged_unit_count}
+		<h2>Corroboration</h2>
+		<div class="counts">
+			<div class="count">
+				<span class="n">{counts.completed ?? 0}</span>
+				<span class="corr-label">completed</span>
+			</div>
+			<div class="count">
+				<span class="n">{counts.in_progress ?? 0}</span>
+				<span class="corr-label">in progress</span>
+			</div>
+			<div class="count corr-diverged" class:alert={diverged > 0}>
+				<span class="n">{diverged}</span>
+				<span class="corr-label">diverged</span>
+			</div>
+		</div>
+		{#if diverged > 0}
+			<p class="corr-gloss alert">
+				{diverged}
+				{diverged === 1 ? "unit's" : "units'"} replicas disagreed — nondeterminism or a model/version
+				skew, not model drift.
+			</p>
+		{:else}
+			<p class="corr-gloss ok">0 diverged — corroboration clean.</p>
+		{/if}
+	{/if}
+
 	<h2>Results</h2>
 	<div class="results-head">
 		<div class="toggle">
@@ -1061,6 +1096,34 @@
 		text-transform: uppercase;
 		letter-spacing: 0.07em;
 		color: #8b93a7;
+	}
+	/* Richer D8 corroboration panel — reuses the .count card; the diverged card
+	   stays calm at 0 and turns amber only when there's a divergence to flag. */
+	.corr-label {
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.07em;
+		color: #8b93a7;
+	}
+	.corr-diverged.alert {
+		border-color: #5a4020;
+		background: #3a2a18;
+	}
+	.corr-diverged.alert .n {
+		color: #fbbf24;
+	}
+	.corr-diverged.alert .corr-label {
+		color: #fbbf24;
+	}
+	.corr-gloss {
+		margin: 0.5rem 0 0;
+		font-size: 0.8rem;
+	}
+	.corr-gloss.ok {
+		color: #7fd1a8;
+	}
+	.corr-gloss.alert {
+		color: #fbbf24;
 	}
 	table.receipts,
 	table.workers {

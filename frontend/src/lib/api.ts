@@ -174,6 +174,13 @@ export interface ExperimentActivity {
 	// for an eligible worker, auto-resumes" hold rather than a silent stall.
 	// Absent when there's nothing to explain (the healthy case).
 	liveness_note?: string;
+	// Richer D8 (live corroboration health): completed units whose independent
+	// replicas DIVERGED — workers disagreed, so no agreement and no receipt. A
+	// live > 0 is the nondeterminism / model-version-skew signal (NOT model
+	// drift), surfaced here instead of only retrospectively in the evidence
+	// footprint. PUBLIC: an aggregate count, no per-worker identity. Absent on the
+	// empty rollup (no work units submitted yet).
+	diverged_unit_count?: number;
 }
 
 // One result in the delivery view (R-D5, coordinator M-Results). The science
