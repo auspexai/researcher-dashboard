@@ -591,8 +591,7 @@
 			</p>
 		{:else}
 			<p class="custody-line">
-				Not yet collected — the coordinator still holds the only copy. Download the
-				evidence bundle (Results below) to take custody.
+				The coordinator’s copy of these results is subject to age-off — be sure you’ve downloaded your evidence bundle (Results below, or <code>auspexai-tenant experiment export</code>) to keep the durable record.
 			</p>
 		{/if}
 		{#if experiment.retention_hold}
@@ -1056,12 +1055,14 @@
 	}
 	/* ── Apparatus footprint (firewall #2) ── */
 	.footprint {
+		/* .footprint is itself a grid ITEM in the parent `.grid`, so it was being
+		   squeezed into one auto-fit column and its fields stacked vertically. Span
+		   the full parent width first (like `.field.wide`), THEN lay its own fields
+		   out in the same auto-fit grid. */
+		grid-column: 1 / -1;
 		margin-top: 0.9rem;
 		padding-top: 0.7rem;
 		border-top: 1px solid #2a3142;
-		/* Lay the fields out in the same auto-fit grid the rest of the page uses
-		   — they were stacking vertically (each field a full-width row) because
-		   .footprint had no grid, unlike the attestation fields above. */
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 		gap: 0.6rem 0.75rem;
