@@ -303,6 +303,18 @@
 	// `can*` predicates are the source-of-truth ENABLE conditions — they mirror
 	// the coordinator, so a disabled action clicked anyway would come back 409.
 	const status = $derived(experiment?.status);
+
+	// Certification provenance (§6.7), parsed from the assessment rationale the
+	// coordinator denormalized onto the experiment. Gives the researcher a one-click
+	// path to the PUBLIC proof (the Rekor entry) — verifiable without trusting us.
+	const certifiedAnchor = $derived.by(() => {
+		const r = experiment?.assessment_rationale ?? '';
+		if (!/· certified /.test(r)) return null;
+		return {
+			profile: r.match(/· certified (\S+)/)?.[1] ?? null,
+			logIndex: r.match(/Rekor logIndex (\d+)/)?.[1] ?? null
+		};
+	});
 	const canPause = $derived(status === 'approved');
 	const canResume = $derived(status === 'paused');
 	const canFinalize = $derived(
@@ -457,6 +469,25 @@
 			rel="noopener">Reading your evidence</a
 		>.
 	</p>
+	{#if certifiedAnchor}
+		<div class="cert-badge">
+			<span class="cert-check" aria-hidden="true">✓</span>
+			<div>
+				<strong>Certified profile</strong>{#if certifiedAnchor.profile}
+					— {certifiedAnchor.profile}{/if}. A vetted, signed starter; its admission was a
+				standing approval, not a per-run review.
+				{#if certifiedAnchor.logIndex}
+					<a
+						href={`https://search.sigstore.dev/?logIndex=${certifiedAnchor.logIndex}`}
+						target="_blank"
+						rel="noopener noreferrer"
+						title="view this certificate in the public Rekor transparency log"
+						>Verify in the public log (Rekor {certifiedAnchor.logIndex}) ↗</a
+					>
+				{/if}
+			</div>
+		</div>
+	{/if}
 	{#if attestationLoading}
 		<p class="muted">Loading attestation…</p>
 	{:else if attestation}
@@ -1187,6 +1218,27 @@
 		color: #b8bfd0;
 	}
 	/* ── Apparatus footprint (firewall #2) ── */
+	.cert-badge {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.6rem;
+		margin: 0.4rem 0 0.9rem;
+		padding: 0.7rem 0.9rem;
+		border: 1px solid rgba(16, 185, 129, 0.35);
+		background: rgba(16, 185, 129, 0.07);
+		border-radius: 8px;
+		font-size: 0.9rem;
+		line-height: 1.5;
+	}
+	.cert-badge .cert-check {
+		color: #10b981;
+		font-weight: 700;
+		flex-shrink: 0;
+	}
+	.cert-badge a {
+		display: inline-block;
+		margin-top: 0.2rem;
+	}
 	.footprint {
 		/* .footprint is itself a grid ITEM in the parent `.grid`, so it was being
 		   squeezed into one auto-fit column and its fields stacked vertically. Span
