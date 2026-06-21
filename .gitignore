@@ -162,6 +162,12 @@ __pycache__/
 *.egg
 .installed.cfg
 
+# uv lockfile — the backend resolves deps from pyproject.toml (CI: `uv pip
+# install -e`; prod: pip-from-wheel), and `auspexai-tenant` is pre-PyPI, so a
+# committed lock would pin an unresolvable sibling source. Dev-local only,
+# matching tenant-sdk / vigiles-tenant.
+uv.lock
+
 # Virtual environments
 .venv/
 venv/
