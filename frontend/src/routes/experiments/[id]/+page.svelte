@@ -478,11 +478,13 @@
 				standing approval, not a per-run review.
 				{#if certifiedAnchor.logIndex}
 					<a
-						href={`https://search.sigstore.dev/?logIndex=${certifiedAnchor.logIndex}`}
+						href={certifiedAnchor.profile
+							? `https://auspexai.network/verify.html?profile=${encodeURIComponent(certifiedAnchor.profile)}`
+							: 'https://auspexai.network/verify.html'}
 						target="_blank"
 						rel="noopener noreferrer"
-						title="view this certificate in the public Rekor transparency log"
-						>Verify in the public log (Rekor {certifiedAnchor.logIndex}) ↗</a
+						title="open the public verifier — checks signature, signer roster, and Rekor inclusion"
+						>Verify this certificate (Rekor {certifiedAnchor.logIndex}) ↗</a
 					>
 				{/if}
 			</div>
