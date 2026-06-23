@@ -61,6 +61,11 @@
 	let resultsError = $state<ApiError | null>(null);
 	let exporting = $state(false);
 	let exportMsg = $state<string | null>(null);
+
+	// Detail-page tabs (declutter): Progress (the live run), Evidence (integrity,
+	// receipts, citation), Export (results + bundle collect/verify). The live
+	// header — status, timeline, heart — stays above the tabs.
+	let tab = $state<'progress' | 'evidence' | 'export'>('progress');
 	// Local verify-on-collect: the dashboard backend runs the SDK's verify_bundle
 	// on the collected bundle (on this machine) and returns the named-check result.
 	let verification = $state<BundleVerification | null>(null);
@@ -386,6 +391,13 @@
 		</button>
 	{/snippet}
 
+	<nav class="tabs" aria-label="Experiment sections">
+		<button class="tab" class:active={tab === 'progress'} onclick={() => (tab = 'progress')}>Progress</button>
+		<button class="tab" class:active={tab === 'evidence'} onclick={() => (tab = 'evidence')}>Evidence</button>
+		<button class="tab" class:active={tab === 'export'} onclick={() => (tab = 'export')}>Export</button>
+	</nav>
+
+	{#if tab === 'progress'}
 	{#if terminal}
 		<p class="no-actions">No actions available — experiment is {experiment.status}.</p>
 	{:else}
@@ -466,7 +478,9 @@
 			</div>
 		{/if}
 	</section>
+	{/if}
 
+	{#if tab === 'evidence'}
 	<h2>Integrity</h2>
 	<p class="muted">
 		<strong>What this means:</strong> the apparatus's own disclosures about how this
@@ -701,7 +715,9 @@
 			</div>
 		</section>
 	{/if}
+	{/if}
 
+	{#if tab === 'progress'}
 	<!-- The headline activity numbers (contributors, replication fill, work
 	     units, network size, last beat) now live in the ActivityHeart above.
 	     What remains here is the drill-down the heart doesn't show: the
@@ -805,7 +821,9 @@
 			<p class="corr-gloss ok">0 diverged — corroboration clean.</p>
 		{/if}
 	{/if}
+	{/if}
 
+	{#if tab === 'export'}
 	<h2>Results</h2>
 	<div class="results-head">
 		<div class="toggle">
@@ -914,7 +932,9 @@
 			</button>
 		{/if}
 	{/if}
+	{/if}
 
+	{#if tab === 'evidence'}
 	<h2>Receipts</h2>
 	{#if receipts === null}
 		<p class="muted">Receipts unavailable.</p>
@@ -947,6 +967,7 @@
 			</tbody>
 		</table>
 	{/if}
+	{/if}
 {/if}
 
 <style>
@@ -960,6 +981,29 @@
 	}
 	.back a:hover {
 		color: #b8bfd0;
+	}
+	.tabs {
+		display: flex;
+		gap: 0.25rem;
+		border-bottom: 1px solid #1e2638;
+		margin: 1rem 0 1.25rem;
+	}
+	.tab {
+		background: none;
+		border: none;
+		border-bottom: 2px solid transparent;
+		color: #8b93a7;
+		font: inherit;
+		font-size: 0.9rem;
+		padding: 0.5rem 0.9rem;
+		cursor: pointer;
+	}
+	.tab:hover {
+		color: #cdd5e6;
+	}
+	.tab.active {
+		color: #e6e9f0;
+		border-bottom-color: #4a7dff;
 	}
 	.head {
 		display: flex;
