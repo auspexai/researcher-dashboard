@@ -13,7 +13,10 @@
 	onMount(async () => {
 		try {
 			const data = await api.listExperiments();
-			experiments = data.experiments ?? [];
+			// Newest first: most recently submitted at the top, oldest at the bottom.
+			experiments = (data.experiments ?? []).sort((a, b) =>
+				(b.submitted_at ?? '').localeCompare(a.submitted_at ?? '')
+			);
 		} catch (e) {
 			error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
 		}
