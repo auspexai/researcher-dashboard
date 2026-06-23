@@ -7,7 +7,7 @@
 # service install`. Mirrors the worker installer's conventions: idempotent
 # (re-run = graceful upgrade), consent-gated shell edits, loud about every step.
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/auspexai/researcher-dashboard/main/install.sh | bash
+#   curl -fsSL https://getresearcher.auspexai.network | bash
 set -euo pipefail
 
 APP_DIR="${AUSPEXAI_RESEARCHER_HOME:-$HOME/.local/share/auspexai-researcher}"
