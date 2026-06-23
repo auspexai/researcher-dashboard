@@ -5,8 +5,7 @@
 		{ href: '/', label: 'Overview' },
 		{ href: '/run', label: 'Run Experiment' },
 		{ href: '/experiments', label: 'My Experiments' },
-		{ href: '/requests', label: 'My Requests' },
-		{ href: '/receipts', label: 'My Receipts' }
+		{ href: '/requests', label: 'Requests' }
 	];
 
 	const isActive = (href: string) =>
