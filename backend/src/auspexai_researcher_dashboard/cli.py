@@ -61,6 +61,59 @@ def serve(host: str | None, port: int | None, no_browser: bool, reload: bool) ->
     )
 
 
+@cli.group()
+def service() -> None:
+    """Manage the dashboard as a persistent background service.
+
+    Registers `serve --no-browser` as a per-user service (launchd on macOS,
+    systemd --user on Linux) so the dashboard is always running — the same
+    command the installer calls, so a `pip install` reaches the identical setup.
+    """
+
+
+@service.command("install")
+@click.option("--port", default=None, type=int, help="Bind port (default: 4228 or $PORT).")
+def service_install(port: int | None) -> None:
+    """Install + start the persistent dashboard service."""
+    from .service import ServiceManager
+
+    bind_port = port or ResearcherDashboardConfig.from_env().bind_port
+    mgr = ServiceManager(port=bind_port)
+    if not mgr.supported:
+        click.echo(
+            f"Persistent service is not supported on {mgr.platform!r}. "
+            "Run `auspexai-dashboard serve` in the foreground instead.",
+            err=True,
+        )
+        raise SystemExit(1)
+    click.echo(mgr.install())
+    click.echo(f"Dashboard: http://127.0.0.1:{bind_port}/")
+
+
+@service.command("uninstall")
+def service_uninstall() -> None:
+    """Stop + remove the persistent dashboard service."""
+    from .service import ServiceManager
+
+    click.echo(ServiceManager().uninstall())
+
+
+@service.command("restart")
+def service_restart() -> None:
+    """Restart the service (used on upgrade so the new code goes live)."""
+    from .service import ServiceManager
+
+    click.echo(ServiceManager().restart())
+
+
+@service.command("status")
+def service_status() -> None:
+    """Report whether the persistent service is loaded/running."""
+    from .service import ServiceManager
+
+    click.echo(ServiceManager().status())
+
+
 def main() -> None:
     cli(prog_name="auspexai-dashboard")
 
