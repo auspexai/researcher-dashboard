@@ -122,7 +122,7 @@
 					{#if r === 1}
 						{#if whoami.research_standing_eligible_for_r2}
 							<p class="ok small">
-								✓ eligible for the R2 review — {whoami.research_standing_distinct} of {whoami.research_standing_threshold}
+								✓ eligible for the R2 review — {whoami.research_standing_distinct}
 								distinct experiments (a maintainer promotes)
 							</p>
 						{:else}
