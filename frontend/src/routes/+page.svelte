@@ -113,6 +113,26 @@
 						console.
 					</p>
 				{/if}
+				{#if whoami.research_standing !== undefined && whoami.research_standing !== null}
+					{@const r = whoami.research_standing}
+					{@const rLabel =
+						['R0 · unverified', 'R1 · verified', 'R2 · established', 'R3 · trusted'][r] ??
+						`R${r}`}
+					<p class="kv"><span>research standing</span><strong>{rLabel}</strong></p>
+					{#if r === 1}
+						{#if whoami.research_standing_eligible_for_r2}
+							<p class="ok small">
+								✓ eligible for the R2 review — {whoami.research_standing_distinct} of {whoami.research_standing_threshold}
+								distinct experiments (a maintainer promotes)
+							</p>
+						{:else}
+							<p class="muted small">
+								{whoami.research_standing_distinct ?? 0} of {whoami.research_standing_threshold ?? 3}
+								distinct, completed, attested experiments toward the R2 review
+							</p>
+						{/if}
+					{/if}
+				{/if}
 			{:else if whoami}
 				<!-- key present + recognized, but not a researcher tenant (e.g. anonymous/maintainer) -->
 				<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>

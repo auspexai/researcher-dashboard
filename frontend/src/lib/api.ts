@@ -344,6 +344,12 @@ export interface WhoAmI {
 	// The coordinator surfaces both so the dashboard can explain the pause.
 	suspended_at?: string;
 	suspension_reason?: string | null;
+	// D9 Phase 4 (D4): the researcher's own research-standing (0-3) + progress toward
+	// the R2 review. Account-scoped — present for the account holder.
+	research_standing?: number;
+	research_standing_distinct?: number;
+	research_standing_threshold?: number;
+	research_standing_eligible_for_r2?: boolean;
 }
 
 // ── Demand board (R-D6, §9 #46) ────────────────────────────────────────────
