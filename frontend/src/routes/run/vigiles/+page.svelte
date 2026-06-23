@@ -35,8 +35,10 @@
 	<h2>Run it</h2>
 	<ol>
 		<li>
-			<strong>Be onboarded.</strong> Apply with <code>auspexai-tenant apply</code> (GitHub
-			sign-in) and wait for approval — the
+			<strong>Be onboarded.</strong> Run <code>auspexai-tenant apply</code> (GitHub sign-in) — it
+			<strong>generates your tenant signing key</strong> at
+			<code>~/.config/auspexai-tenant/tenant_key</code> and submits your application signed by it
+			(that key is your tenant credential from here on). Wait for approval; the
 			<a href="/">Overview</a> goes green when your tenant is bound.
 		</li>
 		<li>
@@ -49,7 +51,9 @@
 			lifecycle — build, submit, wait for the maintainer's approval, then drive:
 			<pre><code>cd vigiles-tenant
 auspexai-tenant experiment launch</code></pre>
-			No flags needed — it finds <code>experiment.toml</code> and your tenant key on its own.
+			No flags needed — it finds <code>experiment.toml</code> by walking up from the repo, and
+			reuses the same <code>tenant_key</code> that <code>apply</code> created (Vigiles doesn't
+			override <code>key_path</code>).
 			Driving begins automatically on approval (Ctrl-C is safe — re-run to resume from the
 			journal). <span class="aside">Prefer the dashboard? Point it at the repo with
 				<code>WORKSPACE_DIR</code> and the <a href="/run">Run your workspace</a> Build → Submit →
