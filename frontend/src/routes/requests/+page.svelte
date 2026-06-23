@@ -3,8 +3,8 @@
 	// AuspexAI community forum — GitHub Discussions — a public, votable place
 	// maintainers triage alongside the code, instead of a second queue in the
 	// dashboard. This page is the launchpad.
-	const DISCUSSIONS = 'https://github.com/orgs/auspexai/discussions';
-	const NEW = 'https://github.com/orgs/auspexai/discussions/new/choose';
+	const DISCUSSIONS = 'https://github.com/auspexai/.github/discussions';
+	const NEW = 'https://github.com/auspexai/.github/discussions/new/choose';
 </script>
 
 <h1>Requests</h1>
