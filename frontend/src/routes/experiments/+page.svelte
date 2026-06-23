@@ -4,7 +4,6 @@
 	import { api, ApiError, type Experiment } from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
-	import ExperimentSetup from '$lib/components/ExperimentSetup.svelte';
 
 	let experiments = $state<Experiment[] | null>(null);
 	let error = $state<ApiError | null>(null);
@@ -22,9 +21,10 @@
 </script>
 
 <h1>My Experiments</h1>
-<p class="lead">Experiments running under your tenant on the AuspexAI network.</p>
-
-<ExperimentSetup />
+<p class="lead">
+	Experiments running under your tenant on the AuspexAI network. Start a new run on the
+	<a href="/run">Run Experiment</a> page.
+</p>
 
 {#if error}
 	<ErrorState {error} />
@@ -34,9 +34,8 @@
 	<div class="empty">
 		<p>No experiments yet.</p>
 		<p class="muted">
-			Stand one up with <code>auspexai-tenant experiment launch --key &lt;key&gt;</code> (or use
-			“Set up an experiment” above when a workspace is configured). It appears here once the
-			coordinator accepts it.
+			Start one on the <a href="/run">Run Experiment</a> page — the Vigiles starter, or your own
+			workspace. It appears here once the coordinator accepts it.
 		</p>
 	</div>
 {:else}
@@ -87,11 +86,6 @@
 		padding: 1.5rem;
 		text-align: center;
 		margin-top: 1rem;
-	}
-	code {
-		background: #1a2236;
-		padding: 0.1rem 0.3rem;
-		border-radius: 3px;
 	}
 	table {
 		width: 100%;
