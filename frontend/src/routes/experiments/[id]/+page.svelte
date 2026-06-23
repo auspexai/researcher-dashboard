@@ -135,7 +135,9 @@
 		}
 	}
 
-	// Collect the offload bundle: download it + report the custody transfer.
+	// Collect the offload bundle: save it (the shared runs/<label>/ layout, same
+	// as the CLI) + report the custody transfer. Falls back to a browser
+	// download only if the dashboard couldn't write to disk.
 	async function doExport() {
 		const current = id;
 		if (!current || exporting) return;
@@ -143,22 +145,31 @@
 		exportMsg = null;
 		verification = null;
 		try {
-			const { bundle, verification: v } = await api.exportResults(current);
-			const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = `${current}-bundle.json`;
-			a.click();
-			URL.revokeObjectURL(url);
+			const { bundle, verification: v, saved_path } = await api.exportResults(
+				current,
+				experiment?.tenant_experiment_label
+			);
 			verification = v;
 			const t = bundle.transfer;
 			const unified = t?.root_kind?.startsWith('result-set');
-			exportMsg = t
+			const custody = t
 				? `Collected — data custody transferred to you (transfer ${t.transfer_id}${
 						unified ? '; custody signs the attested merkle root' : ''
-					}). Saved ${current}-bundle.json.`
-				: `Saved ${current}-bundle.json.`;
+					}).`
+				: 'Collected.';
+			if (saved_path) {
+				exportMsg = `${custody} Saved to ${saved_path}.`;
+			} else {
+				// Disk write unavailable (e.g. permissions) → browser download fallback.
+				const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = `${current}-bundle.json`;
+				a.click();
+				URL.revokeObjectURL(url);
+				exportMsg = `${custody} Couldn't write to runs/ — downloaded ${current}-bundle.json instead.`;
+			}
 			await load(current, { silent: true }); // refresh results_collected_at
 		} catch (e) {
 			exportMsg = `Export failed: ${e instanceof ApiError ? e.message : String(e)}`;

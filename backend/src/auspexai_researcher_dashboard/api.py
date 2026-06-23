@@ -11,14 +11,40 @@ A `CoordinatorError` is rendered as a stable error envelope the SPA branches on:
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from auspexai_tenant.evidence import BundleVerification, verify_bundle
+from auspexai_tenant.runs import RunLayout
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .coordinator import CoordinatorClient, CoordinatorError
+
+
+def _runs_base(cfg) -> Path:
+    """Where the dashboard writes evidence bundles. The configured workspace's
+    `runs/` when set — so a Web-UI export lands exactly where the CLI's
+    `experiment export` writes — else a findable per-user default."""
+    if getattr(cfg, "workspace_dir", None):
+        return cfg.workspace_dir / "runs"
+    return Path.home() / ".local" / "share" / "auspexai-researcher" / "runs"
+
+
+def _save_bundle(cfg, key: str, bundle: dict[str, Any]) -> str | None:
+    """Save the verified bundle to the shared `runs/<label>/bundle.json` layout —
+    the single source of truth the CLI uses (design §8) — so a click and the CLI
+    organize downloads identically. Best-effort: a write failure never fails the
+    export (the browser still receives the bundle for display/download)."""
+    try:
+        layout = RunLayout(key, base=_runs_base(cfg)).ensure()
+        path = layout.bundle_path()
+        path.write_text(json.dumps(bundle, indent=2))
+        return str(path)
+    except (OSError, ValueError):
+        return None
 
 
 def _rekor_status(bundle: dict[str, Any]) -> dict[str, Any]:
@@ -153,18 +179,27 @@ def build_api_router() -> APIRouter:
         return await _proxy(request, f"/api/v0/experiments/{experiment_id}/results")
 
     @router.get("/experiments/{experiment_id}/results/export")
-    async def export_experiment_results(request: Request, experiment_id: str) -> JSONResponse:
+    async def export_experiment_results(
+        request: Request, experiment_id: str, label: str | None = None
+    ) -> JSONResponse:
         """Collect the evidence bundle (EB-1: consensus payloads + work-unit
         inputs + worker signatures + receipts + manifest + the result-set
         attestation with its Rekor anchor + a signed custody record), THEN verify
         it locally — the SDK's `verify_bundle` runs on THIS machine — so the click
         runs the whole attestation chain (signatures, attestation, root unify,
         completeness, worker sigs), not just the download. Returns
-        {bundle, verification}; the saved bundle is the coordinator's verbatim, so
-        `auspexai-tenant bundle verify` reproduces this independently. Collecting
-        stamps `results_collected_at` and transfers data custody. A 409
-        (`conflict`) is the verify-on-export tamper alarm (coordinator refused to
-        re-sign custody over a changed set)."""
+        {bundle, verification, saved_path}; the verified bundle is also written to
+        the shared `runs/<label>/bundle.json` layout (the same place the CLI's
+        `experiment export` writes — `saved_path` is where it landed), so a click
+        and the CLI organize downloads identically. The saved bundle is the
+        coordinator's verbatim, so `auspexai-tenant bundle verify` reproduces this
+        independently. Collecting stamps `results_collected_at` and transfers data
+        custody. A 409 (`conflict`) is the verify-on-export tamper alarm
+        (coordinator refused to re-sign custody over a changed set).
+
+        `label` (the tenant_experiment_label, supplied by the SPA) keys the local
+        folder so it reads like the CLI's; absent, the experiment id is used.
+        """
         try:
             bundle = await _client(request).get_json(
                 f"/api/v0/experiments/{experiment_id}/results/export"
@@ -181,7 +216,10 @@ def build_api_router() -> APIRouter:
                 "checks": [],
                 "rekor": _rekor_status(bundle),
             }
-        return JSONResponse(content={"bundle": bundle, "verification": verification})
+        saved_path = _save_bundle(request.app.state.config, label or experiment_id, bundle)
+        return JSONResponse(
+            content={"bundle": bundle, "verification": verification, "saved_path": saved_path}
+        )
 
     @router.get("/experiments/{experiment_id}/attestation")
     async def get_experiment_attestation(request: Request, experiment_id: str) -> JSONResponse:

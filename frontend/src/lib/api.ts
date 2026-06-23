@@ -293,6 +293,10 @@ export interface BundleVerification {
 export interface ExportResponse {
 	bundle: ExportBundle;
 	verification: BundleVerification;
+	// Where the dashboard saved the verified bundle on disk (the shared
+	// runs/<label>/bundle.json layout — same as the CLI). null if the disk
+	// write was unavailable; the SPA falls back to a browser download.
+	saved_path?: string | null;
 }
 
 // The evidence bundle (coordinator GET .../results/export; EB-1, §9 #47).
@@ -504,8 +508,11 @@ export const api = {
 	// researcher. A `conflict` ApiError here is the verify-on-export tamper
 	// alarm — the coordinator refused to sign custody over a set that fails
 	// verification.
-	exportResults: (id: string) =>
-		getJson<ExportResponse>(`/api/v0/experiments/${encodeURIComponent(id)}/results/export`),
+	exportResults: (id: string, label?: string) =>
+		getJson<ExportResponse>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/results/export` +
+				(label ? `?label=${encodeURIComponent(label)}` : '')
+		),
 
 	// The result-set attestation (integrity panel, R-D inc-1). Final for a
 	// completed experiment; `checkpoint: true` asks for a partial
