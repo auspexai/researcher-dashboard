@@ -45,10 +45,15 @@
 			— it ships the <code>experiment.toml</code> + package, ready to run unchanged.
 		</li>
 		<li>
-			<strong>Run it.</strong> Point the dashboard at that folder (set <code>WORKSPACE_DIR</code>)
-			and use the <a href="/run">Run your workspace</a> controls — Build → Submit → Run — or the
-			CLI:
-			<pre><code>auspexai-tenant experiment launch --key &lt;key&gt;</code></pre>
+			<strong>Run it.</strong> From inside the cloned repo, one command does the whole
+			lifecycle — build, submit, wait for the maintainer's approval, then drive:
+			<pre><code>cd vigiles-tenant
+auspexai-tenant experiment launch</code></pre>
+			No flags needed — it finds <code>experiment.toml</code> and your tenant key on its own.
+			Driving begins automatically on approval (Ctrl-C is safe — re-run to resume from the
+			journal). <span class="aside">Prefer the dashboard? Point it at the repo with
+				<code>WORKSPACE_DIR</code> and the <a href="/run">Run your workspace</a> Build → Submit →
+				Run controls do the same.</span>
 		</li>
 		<li>
 			<strong>Take custody.</strong> When it converges, collect + verify the evidence bundle:
@@ -113,6 +118,12 @@
 	.lead {
 		color: #b8bfd0;
 		max-width: 64ch;
+	}
+	.aside {
+		display: block;
+		margin-top: 0.5rem;
+		color: #8b93a7;
+		font-size: 0.82rem;
 	}
 	section {
 		margin-top: 1.5rem;
