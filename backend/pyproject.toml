@@ -26,11 +26,11 @@ dependencies = [
     # all come from the tenant SDK (researcher_dashboard_design.md §5/§7.1). Now
     # a hard runtime dependency as of R-D2: the backend signs every coordinator
     # request with the SDK's Rfc9421Auth. The SDK's RFC 9421 request signer
-    # shipped in R-D1(a). PyPI publish for both packages is still deferred, so
-    # in practice install the SDK alongside this package from the sibling repo
-    # (e.g. `pip install -e ../tenant-sdk -e .`); once published this resolves
-    # normally.
-    "auspexai-tenant",
+    # shipped in R-D1(a).
+    # Floor pinned to >=0.6.12: the credential rename made the dashboard import
+    # `TenantKey` (was `MaintainerKey`), which only exists from 0.6.12 — the
+    # floor stops any environment resolving a pre-rename SDK against this code.
+    "auspexai-tenant>=0.6.12",
 ]
 
 [project.optional-dependencies]

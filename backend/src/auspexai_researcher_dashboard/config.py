@@ -18,7 +18,7 @@ from pathlib import Path
 # auspexai_tenant.signing.DEFAULT_KEY_PATH; resolved dynamically when the SDK
 # is importable, with this literal as the fallback for environments where it
 # is not yet installed.
-_SDK_DEFAULT_KEY_PATH = Path.home() / ".config" / "auspexai-tenant" / "maintainer_key"
+_SDK_DEFAULT_KEY_PATH = Path.home() / ".config" / "auspexai-tenant" / "tenant_key"
 
 
 def _default_key_path() -> Path:

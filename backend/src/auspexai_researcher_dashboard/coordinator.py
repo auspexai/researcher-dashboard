@@ -1,7 +1,7 @@
 """Signed coordinator client for the researcher dashboard (R-D2).
 
 This is the only component that touches the researcher's private key. It loads
-the tenant SDK `MaintainerKey` from disk and signs every coordinator request
+the tenant SDK `TenantKey` from disk and signs every coordinator request
 via RFC 9421 (`auspexai_tenant.http_signing.Rfc9421Auth`), then returns the
 coordinator's JSON to the caller verbatim. It applies NO filtering of its own —
 the coordinator scopes and field-filters the response server-side
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import httpx
 from auspexai_tenant.http_signing import Rfc9421Auth
-from auspexai_tenant.signing import MaintainerKey
+from auspexai_tenant.signing import TenantKey
 
 from .config import ResearcherDashboardConfig
 
@@ -120,7 +120,7 @@ class CoordinatorClient:
 
     def _auth(self) -> Rfc9421Auth:
         try:
-            key = MaintainerKey.load(self._config.key_path)
+            key = TenantKey.load(self._config.key_path)
         except FileNotFoundError as e:
             raise CoordinatorError(
                 "no_identity",

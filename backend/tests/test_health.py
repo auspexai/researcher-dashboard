@@ -12,7 +12,7 @@ from auspexai_researcher_dashboard.main import create_app
 
 
 def _config(tmp_path: Path, *, key: bool) -> ResearcherDashboardConfig:
-    key_path = tmp_path / "maintainer_key"
+    key_path = tmp_path / "tenant_key"
     if key:
         key_path.write_text("not-a-real-key")
     return ResearcherDashboardConfig(
@@ -72,7 +72,7 @@ def test_static_dir_present_but_unbuilt_does_not_crash(tmp_path: Path) -> None:
         bind_host="127.0.0.1",
         bind_port=4228,
         static_dir=static,
-        key_path=tmp_path / "maintainer_key",
+        key_path=tmp_path / "tenant_key",
         open_browser=False,
     )
     client = TestClient(create_app(config))  # must not raise
@@ -84,10 +84,10 @@ def test_static_dir_present_but_unbuilt_does_not_crash(tmp_path: Path) -> None:
 def test_health_exposes_local_pubkey_with_real_key(tmp_path: Path) -> None:
     """R-D2.5: /health surfaces the PUBLIC key of the local tenant key (never
     the private material), so the Overview can compare it to the bound key."""
-    from auspexai_tenant.signing import MaintainerKey
+    from auspexai_tenant.signing import TenantKey
 
-    key_path = tmp_path / "maintainer_key"
-    key = MaintainerKey.generate()
+    key_path = tmp_path / "tenant_key"
+    key = TenantKey.generate()
     key.save(key_path)
     config = ResearcherDashboardConfig(
         coord_url="http://127.0.0.1:9",

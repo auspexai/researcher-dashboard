@@ -12,7 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
-from auspexai_tenant.signing import MaintainerKey
+from auspexai_tenant.signing import TenantKey
 from fastapi.testclient import TestClient
 
 from auspexai_researcher_dashboard.config import ResearcherDashboardConfig
@@ -39,8 +39,8 @@ class _Recorder:
 def _make_client(tmp_path: Path, recorder: _Recorder) -> tuple[TestClient, str]:
     """Build a dashboard app whose coordinator transport is the recorder.
     Returns (client, pubkey_hex)."""
-    key_path = tmp_path / "maintainer_key"
-    key = MaintainerKey.generate()
+    key_path = tmp_path / "tenant_key"
+    key = TenantKey.generate()
     key.save(key_path)
     config = ResearcherDashboardConfig(
         coord_url=COORD,

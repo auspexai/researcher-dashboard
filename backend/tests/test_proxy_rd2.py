@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
-from auspexai_tenant.signing import MaintainerKey
+from auspexai_tenant.signing import TenantKey
 from fastapi.testclient import TestClient
 
 from auspexai_researcher_dashboard.config import ResearcherDashboardConfig
@@ -43,10 +43,10 @@ def _make_client(
 ) -> tuple[TestClient, str]:
     """Build a dashboard app whose coordinator transport is the recorder.
     Returns (client, pubkey_hex). pubkey_hex is '' when key=False."""
-    key_path = tmp_path / "maintainer_key"
+    key_path = tmp_path / "tenant_key"
     pubkey_hex = ""
     if key:
-        k = MaintainerKey.generate()
+        k = TenantKey.generate()
         k.save(key_path)
         pubkey_hex = k.pubkey_hex
     config = ResearcherDashboardConfig(
@@ -135,8 +135,8 @@ def test_unreachable_coordinator_maps(tmp_path: Path) -> None:
     def boom(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    key_path = tmp_path / "maintainer_key"
-    MaintainerKey.generate().save(key_path)
+    key_path = tmp_path / "tenant_key"
+    TenantKey.generate().save(key_path)
     config = ResearcherDashboardConfig(
         coord_url=COORD,
         bind_host="127.0.0.1",

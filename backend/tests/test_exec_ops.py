@@ -24,7 +24,7 @@ def _config(tmp_path: Path, *, workspace: bool, exec_enabled: bool):
         bind_host="127.0.0.1",
         bind_port=4228,
         static_dir=tmp_path / "no-static",
-        key_path=tmp_path / "maintainer_key",
+        key_path=tmp_path / "tenant_key",
         open_browser=False,
         workspace_dir=ws if workspace else None,
         local_exec_enabled=exec_enabled,
@@ -123,7 +123,7 @@ def test_submit_passes_key_path_not_material(tmp_path, monkeypatch):
     assert c.post("/api/v0/local/submit").status_code == 200
     assert "--key" in seen["cmd"]
     key_arg = seen["cmd"][seen["cmd"].index("--key") + 1]
-    assert key_arg.endswith("/maintainer_key")  # a PATH; the SDK reads the material
+    assert key_arg.endswith("/tenant_key")  # a PATH; the SDK reads the material
 
 
 # ── run lifecycle ───────────────────────────────────────────────────────────

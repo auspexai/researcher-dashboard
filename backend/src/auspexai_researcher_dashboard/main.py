@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import httpx
-from auspexai_tenant.signing import MaintainerKey
+from auspexai_tenant.signing import TenantKey
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -35,7 +35,7 @@ def _local_pubkey_hex(config: ResearcherDashboardConfig) -> str | None:
     /auth/whoami; this is the "what key is on disk" half of the comparison.
     """
     try:
-        return MaintainerKey.load(config.key_path).pubkey_hex
+        return TenantKey.load(config.key_path).pubkey_hex
     except (FileNotFoundError, ValueError, OSError):
         return None
 
