@@ -17,12 +17,11 @@
 	<p class="kinds-intro">Two kinds of request:</p>
 	<ul class="kinds">
 		<li>
-			<strong>Model requests</strong> — surface a model (and quantization) you need served.
-			Workers pull models on demand when they run the executor, so this rallies a volunteer to
-			cover one that isn't already on the network.
+			<strong>Model requests</strong> — a model (and quantization) you want for your experiments
+			that isn't available yet.
 		</li>
 		<li>
-			<strong>Capability requests</strong> — a new worker capability or platform feature your
+			<strong>Capability requests</strong> — something the platform can't do yet that your
 			research needs.
 		</li>
 	</ul>
