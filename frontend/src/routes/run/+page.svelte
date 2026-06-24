@@ -1,13 +1,53 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import ExperimentSetup from '$lib/components/ExperimentSetup.svelte';
+	import { api, type Experiment } from '$lib/api';
 
 	// The launcher home: start a run (the Vigiles starter or your own workspace)
 	// here. Monitoring + the run list live on My Experiments — this page stays a
 	// pure launcher, no duplicate list.
+
+	// …but a run kicked off from the CLI (or here) won't tell you WHERE it went.
+	// So we poll the coordinator (the shared state the CLI also writes to) and
+	// surface a deep-link nudge to any LIVE run — the dashboard NOTICES the run
+	// and points you at its detail page. No CLI→browser push needed.
+	const TERMINAL = new Set(['completed', 'aborted', 'archived']);
+	let liveRuns = $state<Experiment[]>([]);
+
+	async function refreshLive() {
+		try {
+			const data = await api.listExperiments();
+			liveRuns = (data.experiments ?? [])
+				.filter((e) => !TERMINAL.has(e.status ?? ''))
+				.sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''));
+		} catch {
+			/* best-effort nudge — never blocks the launcher */
+		}
+	}
+
+	onMount(() => {
+		refreshLive();
+		const timer = setInterval(refreshLive, 5000);
+		return () => clearInterval(timer);
+	});
 </script>
 
 <h1>Run Experiment</h1>
 <p class="lead">Start a run — the certified Vigiles starter, or your own workspace.</p>
+
+<!-- Live-run nudge: the gap a CLI launch leaves ("where did it go?"). Polls the
+     coordinator; when a run is live it deep-links you straight to its detail. -->
+{#if liveRuns.length > 0}
+	{@const top = liveRuns[0]}
+	<a class="live-nudge" href="/experiments/{top.experiment_id}">
+		<span class="live-dot"></span>
+		<span class="live-text"
+			>Your run <strong>{top.tenant_experiment_label ?? top.experiment_id}</strong> is live
+			<span class="live-status">{top.status}</span> — watch it →</span
+		>
+		{#if liveRuns.length > 1}<span class="live-more">+{liveRuns.length - 1} more</span>{/if}
+	</a>
+{/if}
 
 <!-- Pinned: the declawed certified starter. Always available, for a first run
      and forever after. Its sub-page is the what-is-Vigiles + how-to hub. -->
@@ -43,6 +83,51 @@
 	}
 	.lead {
 		color: #b8bfd0;
+	}
+	.live-nudge {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		margin: 0.9rem 0 0.3rem;
+		padding: 0.6rem 0.9rem;
+		border: 1px solid #1d7f90;
+		border-left-width: 4px;
+		border-radius: 8px;
+		background: linear-gradient(180deg, rgba(21, 94, 107, 0.22), #10182a);
+		color: #e0fbff;
+		text-decoration: none;
+		font-size: 0.9rem;
+	}
+	.live-nudge:hover {
+		background: linear-gradient(180deg, rgba(26, 111, 126, 0.3), #122036);
+	}
+	.live-dot {
+		flex: none;
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: #67e8f9;
+		animation: nudge-beat 1.2s ease-out infinite;
+	}
+	@keyframes nudge-beat {
+		0% {
+			box-shadow: 0 0 0 0 rgba(103, 232, 249, 0.55);
+		}
+		70% {
+			box-shadow: 0 0 0 7px rgba(103, 232, 249, 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgba(103, 232, 249, 0);
+		}
+	}
+	.live-status {
+		color: #8bd9e8;
+		text-transform: lowercase;
+	}
+	.live-more {
+		margin-left: auto;
+		font-size: 0.78rem;
+		color: #8bd9e8;
 	}
 	.section {
 		font-size: 0.95rem;

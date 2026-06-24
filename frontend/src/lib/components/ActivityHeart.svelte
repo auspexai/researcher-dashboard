@@ -132,7 +132,18 @@
 	const pct = $derived(target > 0 ? Math.min(100, Math.round((completions / target) * 100)) : null);
 </script>
 
-<section class="heart" class:live class:terminal>
+{#if terminal}
+	<!-- A finished run doesn't need a live monitor (the "out of place" heart on a
+	     done experiment): collapse to a compact final summary — the numbers that
+	     outlive the run. The live pulse only renders while it's still running. -->
+	<section class="heart-done" class:good={completed} class:bad={aborted}>
+		<span class="done-status">{experiment.status}</span>
+		<span class="done-metric"><strong>{completions}{target ? `/${target}` : ''}</strong> units attested</span>
+		{#if pct != null}<span class="done-metric"><strong>{pct}%</strong> replicated</span>{/if}
+		<span class="done-metric"><strong>{activity?.total_work_units ?? 0}</strong> work units</span>
+	</section>
+{:else}
+	<section class="heart" class:live>
 	<header>
 		<div
 			class="pulse-dot"
@@ -207,6 +218,7 @@
 		</div>
 	</div>
 </section>
+{/if}
 
 <style>
 	.heart {
@@ -220,6 +232,40 @@
 	}
 	.heart.live {
 		border-color: #155e6b;
+	}
+	/* Terminal runs collapse to a one-line final summary — no live monitor. */
+	.heart-done {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 1.1rem;
+		border: 1px solid #233049;
+		border-radius: 10px;
+		background: #0e1424;
+		padding: 0.7rem 1rem;
+		font-size: 0.85rem;
+		color: #b8bfd0;
+	}
+	.heart-done.good {
+		border-color: #1f5d4a;
+	}
+	.heart-done.bad {
+		border-color: #6b2a2a;
+	}
+	.done-status {
+		text-transform: lowercase;
+		font-weight: 600;
+		color: #8b93a7;
+	}
+	.heart-done.good .done-status {
+		color: #6ee7b7;
+	}
+	.heart-done.bad .done-status {
+		color: #fca5a5;
+	}
+	.done-metric strong {
+		color: #e6ebf5;
+		font-variant-numeric: tabular-nums;
 	}
 	header {
 		display: flex;

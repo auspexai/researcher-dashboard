@@ -232,29 +232,6 @@
 			<p class="path">{health.coord.url}</p>
 			{#if health.coord.detail}<p class="muted">{health.coord.detail}</p>{/if}
 		</div>
-		<!-- SDK capability wedge (R-D inc-1): the dashboard monitors; the SDK is
-		     the analysis + verification surface. Until docs live beyond the repo,
-		     the README is the capability front door. -->
-		<div class="card">
-			<h2>Analysis &amp; verification</h2>
-			<p class="muted">
-				The dashboard monitors; the <code>auspexai-tenant</code> SDK is where your data
-				becomes analyzable and provable:
-			</p>
-			<ul class="sdk-list">
-				<li><code>experiment export --verify</code> — collect your evidence bundle, verified</li>
-				<li><code>bundle verify</code> — re-verify it offline, forever</li>
-				<li><code>bundle table</code> / <code>load_verified</code> — verified DataFrame, CSV, Parquet</li>
-			</ul>
-			<p class="muted">
-				<a
-					class="sdk-link"
-					href="https://github.com/auspexai/tenant-sdk#readme"
-					target="_blank"
-					rel="noopener noreferrer"
-				>Full capability map — SDK README ↗</a>
-			</p>
-		</div>
 	</div>
 
 	{#if whoamiError && whoamiError.kind !== 'unauthorized'}
@@ -399,22 +376,11 @@
 	.footer {
 		margin-top: 1.5rem;
 	}
-	.sdk-list {
-		margin: 0.4rem 0;
-		padding-left: 1.1rem;
-		font-size: 0.8rem;
-		color: #b8bfd0;
-	}
-	.sdk-list li {
-		margin: 0.25rem 0;
-	}
-	a.sdk-link,
 	a.doc-link {
 		color: #7aa2ff;
 		text-decoration: none;
 		font-size: 0.8rem;
 	}
-	a.sdk-link:hover,
 	a.doc-link:hover {
 		text-decoration: underline;
 	}
