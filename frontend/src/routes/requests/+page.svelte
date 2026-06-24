@@ -9,9 +9,8 @@
 
 <h1>Requests</h1>
 <p class="lead">
-	Need a model the network doesn't serve, or a capability that doesn't exist yet? Requests live on
-	the AuspexAI community forum — a public, up-votable place the maintainers triage alongside the
-	code.
+	Requests live on the AuspexAI community forum — a public, up-votable place the maintainers triage
+	alongside the code.
 </p>
 
 <div class="card">
