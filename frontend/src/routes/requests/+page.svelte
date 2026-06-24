@@ -17,7 +17,9 @@
 	<p class="kinds-intro">Two kinds of request:</p>
 	<ul class="kinds">
 		<li>
-			<strong>Model requests</strong> — a model (and quantization) the network should serve.
+			<strong>Model requests</strong> — surface a model (and quantization) you need served.
+			Workers pull models on demand when they run the executor, so this rallies a volunteer to
+			cover one that isn't already on the network.
 		</li>
 		<li>
 			<strong>Capability requests</strong> — a new worker capability or platform feature your
