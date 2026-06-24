@@ -137,6 +137,13 @@ def build_api_router() -> APIRouter:
             return _envelope(e)
         return JSONResponse(content=data)
 
+    @router.post("/accounts/orcid/start")
+    async def orcid_link_start(request: Request) -> JSONResponse:
+        """Begin linking the researcher's ORCID (D8): a signed POST to the
+        coordinator returns the ORCID authorize URL the SPA opens. A 503 envelope
+        means ORCID isn't configured on the coordinator yet."""
+        return await _proxy_post(request, "/api/v0/accounts/orcid/start")
+
     @router.get("/experiments")
     async def list_experiments(request: Request) -> JSONResponse:
         """My experiments — tenant-scoped list."""

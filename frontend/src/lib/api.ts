@@ -354,6 +354,8 @@ export interface WhoAmI {
 	research_standing_distinct?: number;
 	research_standing_threshold?: number;
 	research_standing_eligible_for_r2?: boolean;
+	// D8: the linked ORCID iD (e.g. "0000-0002-1825-0097"), if any. Account-scoped.
+	orcid_id?: string | null;
 }
 
 // ── Demand board (R-D6, §9 #46) ────────────────────────────────────────────
@@ -474,6 +476,10 @@ export const api = {
 	getExperimentActivity: (id: string) =>
 		getJson<ExperimentActivity>(`/api/v0/experiments/${encodeURIComponent(id)}/activity`),
 	whoami: () => getJson<WhoAmI>('/api/v0/auth/whoami'),
+	// D8: begin linking ORCID — returns the authorize URL the browser opens.
+	// The coordinator's callback redirects back here with ?orcid=linked.
+	linkOrcidStart: () =>
+		postJson<{ authorize_url: string }>('/api/v0/accounts/orcid/start'),
 	// Onboarding tracker: my tenant applications, signed by the local key even
 	// when it isn't bound yet (self-keyid proof of possession).
 	listMyApplications: () =>

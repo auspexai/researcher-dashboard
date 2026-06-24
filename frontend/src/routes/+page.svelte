@@ -17,13 +17,34 @@
 	// Onboarding tracker (key present but not bound): null = not fetched yet.
 	let applications = $state<TenantApplication[] | null>(null);
 	let applicationsError = $state<string | null>(null);
+	// D8 ORCID linking.
+	let orcidLinking = $state(false);
+	let orcidNote = $state<string | null>(null);
 
 	const ONBOARDING_URL = 'https://github.com/auspexai/.github/blob/main/ONBOARDING.md';
 
 	// pubkeys are 64 hex chars; show head…tail, full string on hover.
 	const short = (k: string | null | undefined) => (k ? `${k.slice(0, 10)}…${k.slice(-8)}` : '—');
 
+	// D8: send the researcher to ORCID; the coordinator callback returns here.
+	async function linkOrcid() {
+		orcidLinking = true;
+		orcidNote = null;
+		try {
+			const { authorize_url } = await api.linkOrcidStart();
+			window.location.href = authorize_url;
+		} catch (e) {
+			orcidNote = `Couldn't start ORCID linking: ${e instanceof ApiError ? e.message : String(e)}`;
+			orcidLinking = false;
+		}
+	}
+
 	onMount(async () => {
+		// The ORCID callback bounces back here with ?orcid=linked|error|expired.
+		const r = new URLSearchParams(window.location.search).get('orcid');
+		if (r === 'linked') orcidNote = 'ORCID linked ✓';
+		else if (r === 'expired') orcidNote = 'ORCID link expired — please try again.';
+		else if (r === 'error') orcidNote = 'ORCID linking failed — please try again.';
 		try {
 			health = await (await fetch('/api/v0/health')).json();
 		} catch (e) {
@@ -133,6 +154,25 @@
 						{/if}
 					{/if}
 				{/if}
+				{#if whoami.orcid_id}
+					<p class="kv">
+						<span>orcid</span>
+						<a
+							class="orcid"
+							href="https://orcid.org/{whoami.orcid_id}"
+							target="_blank"
+							rel="noopener noreferrer">{whoami.orcid_id} ↗</a
+						>
+					</p>
+				{:else}
+					<div class="orcid-link">
+						<button class="orcid-btn" onclick={linkOrcid} disabled={orcidLinking}>
+							{orcidLinking ? 'Opening ORCID…' : 'Link ORCID'}
+						</button>
+						<span class="muted small">verifies your researcher identity (for R3)</span>
+					</div>
+				{/if}
+				{#if orcidNote}<p class="ok small">{orcidNote}</p>{/if}
 			{:else if whoami}
 				<!-- key present + recognized, but not a researcher tenant (e.g. anonymous/maintainer) -->
 				<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>
@@ -289,6 +329,38 @@
 	}
 	.err {
 		color: #fca5a5;
+	}
+	a.orcid {
+		font-family: ui-monospace, monospace;
+		color: #a6ce39; /* ORCID green */
+		text-decoration: none;
+	}
+	a.orcid:hover {
+		text-decoration: underline;
+	}
+	.orcid-link {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0.4rem 0 0.2rem;
+		flex-wrap: wrap;
+	}
+	.orcid-btn {
+		background: #16203a;
+		color: #cdd5e6;
+		border: 1px solid #2a3450;
+		border-radius: 6px;
+		padding: 0.3rem 0.7rem;
+		font: inherit;
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+	.orcid-btn:hover:not(:disabled) {
+		border-color: #a6ce39;
+	}
+	.orcid-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 	.muted {
 		color: #8b93a7;
