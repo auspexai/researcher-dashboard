@@ -137,12 +137,38 @@ def build_api_router() -> APIRouter:
             return _envelope(e)
         return JSONResponse(content=data)
 
+    async def _proxy_post_body(
+        request: Request, path: str, *, status_code: int = 200
+    ) -> JSONResponse:
+        # Bodied signed POST (the ORCID apply submission). The local key signs the
+        # body (Rfc9421Auth covers Content-Digest), so the coordinator's
+        # _verify_applying_key accepts it as proof of possession for the unbound
+        # applying key. Validation (422) / pending (409) come back as envelopes.
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        try:
+            data = await _client(request).post_json(path, body)
+        except CoordinatorError as e:
+            return _envelope(e)
+        return JSONResponse(content=data, status_code=status_code)
+
     @router.post("/accounts/orcid/start")
     async def orcid_link_start(request: Request) -> JSONResponse:
         """Begin linking the researcher's ORCID (D8): a signed POST to the
         coordinator returns the ORCID authorize URL the SPA opens. A 503 envelope
         means ORCID isn't configured on the coordinator yet."""
         return await _proxy_post(request, "/api/v0/accounts/orcid/start")
+
+    @router.post("/tenant-applications")
+    async def submit_tenant_application(request: Request) -> JSONResponse:
+        """Submit a tenant application (ORCID-rooted onboarding). The body carries
+        the ORCID implicit-flow access token (`orcid_access_token`) + the
+        application metadata; the local key signs it (proof of possession). The
+        coordinator verifies the token via ORCID userinfo, roots the account on
+        ORCID, and creates the pending application."""
+        return await _proxy_post_body(request, "/api/v0/tenant-applications", status_code=201)
 
     @router.get("/experiments")
     async def list_experiments(request: Request) -> JSONResponse:

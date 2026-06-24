@@ -196,7 +196,7 @@
 					{#if newestApp.resolution_reason}
 						<p class="muted">Reason: {newestApp.resolution_reason}</p>
 					{/if}
-					<p class="muted small">You can re-apply: <code>auspexai-tenant apply</code></p>
+					<p class="muted small">Re-apply <a class="apply-link" href="/onboard">with ORCID</a> · or <code>auspexai-tenant apply</code> (GitHub)</p>
 				{:else if newestApp}
 					<!-- Unexpected: newest application is approved yet whoami still says
 					     unbound (approval seconds ago, or the key changed since). -->
@@ -207,7 +207,7 @@
 					<p class="muted small">Reload in a moment; if it persists, contact the Maintainer.</p>
 				{:else}
 					<p class="warn">No application found for this key</p>
-					<p class="muted">Run <code>auspexai-tenant apply</code> to submit one.</p>
+					<p class="muted"><a class="apply-link" href="/onboard">Apply with ORCID →</a> · or run <code>auspexai-tenant apply</code> (GitHub)</p>
 					<p class="muted">
 						<a class="doc-link" href={ONBOARDING_URL} target="_blank" rel="noopener noreferrer"
 							>Onboarding guide ↗</a
@@ -382,6 +382,14 @@
 		font-size: 0.8rem;
 	}
 	a.doc-link:hover {
+		text-decoration: underline;
+	}
+	a.apply-link {
+		color: #a6ce39;
+		font-weight: 600;
+		text-decoration: none;
+	}
+	a.apply-link:hover {
 		text-decoration: underline;
 	}
 </style>

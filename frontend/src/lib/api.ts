@@ -547,6 +547,17 @@ export const api = {
 	createSoftwareRequest: (body: { title: string; description: string; reason: string }) =>
 		postJsonBody<SoftwareRequest>('/api/v0/software-requests', body),
 
+	// ORCID-rooted onboarding (#16): submit a tenant application carrying the
+	// ORCID implicit-flow access token + metadata. The backend signs it with the
+	// local key (proof of possession) before forwarding to the coordinator.
+	applyTenant: (body: {
+		orcid_access_token: string;
+		requested_tenant_id: string;
+		contact_name: string;
+		affiliation: string;
+		research_summary?: string;
+	}) => postJsonBody<{ application_id: string; status: string }>('/api/v0/tenant-applications', body),
+
 	// Local-operations (§8). getLocalConfig returns {} when the file is absent;
 	// saveLocalConfig merges the sent tables over any existing file server-side
 	// (unmanaged tables/keys survive). An `unconfigured` ApiError means no
