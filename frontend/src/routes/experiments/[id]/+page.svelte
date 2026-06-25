@@ -732,11 +732,12 @@
 			{backing} of your {activity.own_workers.length} account {activity.own_workers.length === 1
 				? 'worker is'
 				: 'workers are'} backing this experiment; the rest are shown with why they aren't
-			(other contributors are anonymized).
+			(other contributors are anonymized). Live worker status is on the
+			<a class="inline-link" href="/">Overview</a>.
 		</p>
 			<table class="workers">
 				<thead>
-					<tr><th>Worker</th><th>Tier</th><th>This experiment</th><th>Status</th><th>Results</th><th>Last activity</th></tr>
+					<tr><th>Worker</th><th>Tier</th><th>This experiment</th><th>Results</th><th>Last activity</th></tr>
 				</thead>
 				<tbody>
 					{#each activity.own_workers as w (w.worker_id)}
@@ -753,14 +754,6 @@
 								{#if w.experiment_eligibility === 'ineligible' && w.experiment_ineligible_reason}
 									<div class="reason" title="Why this worker can't serve this experiment.">
 										{w.experiment_ineligible_reason}
-									</div>
-								{/if}
-							</td>
-							<td>
-								<StatusBadge status={w.status} />
-								{#if w.status === 'quarantined' && w.quarantine_reason}
-									<div class="reason" title="Quarantine reason set by the maintainer.">
-										{w.quarantine_reason}
 									</div>
 								{/if}
 							</td>
@@ -1268,6 +1261,13 @@
 		font-size: 0.74rem;
 		color: #fbbf24;
 		max-width: 22rem;
+	}
+	a.inline-link {
+		color: #7aa2ff;
+		text-decoration: none;
+	}
+	a.inline-link:hover {
+		text-decoration: underline;
 	}
 	td.mono {
 		font-family: ui-monospace, monospace;

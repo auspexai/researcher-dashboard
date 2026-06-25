@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, ApiError, type TenantApplication, type WhoAmI } from '$lib/api';
+	import {
+		api,
+		ApiError,
+		type AccountWorker,
+		type TenantApplication,
+		type WhoAmI
+	} from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	type Health = {
@@ -17,6 +23,9 @@
 	// Onboarding tracker (key present but not bound): null = not fetched yet.
 	let applications = $state<TenantApplication[] | null>(null);
 	let applicationsError = $state<string | null>(null);
+	// Account-scoped worker liveness for the "Your workers" panel (only the
+	// caller's own-account workers; the coordinator strips everyone else).
+	let workers = $state<AccountWorker[] | null>(null);
 	// D8 ORCID linking.
 	let orcidLinking = $state(false);
 	let orcidNote = $state<string | null>(null);
@@ -25,6 +34,18 @@
 
 	// pubkeys are 64 hex chars; show head…tail, full string on hover.
 	const short = (k: string | null | undefined) => (k ? `${k.slice(0, 10)}…${k.slice(-8)}` : '—');
+
+	// Compact relative time for a heartbeat ("12s ago" / "3h ago").
+	function ago(iso: string | null | undefined): string {
+		if (!iso) return 'never';
+		const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+		if (s < 60) return `${s}s ago`;
+		const m = Math.round(s / 60);
+		if (m < 60) return `${m}m ago`;
+		const h = Math.round(m / 60);
+		if (h < 24) return `${h}h ago`;
+		return `${Math.round(h / 24)}d ago`;
+	}
 
 	// D8: send the researcher to ORCID; the coordinator callback returns here.
 	async function linkOrcid() {
@@ -55,6 +76,13 @@
 		if (health?.identity.key_present) {
 			try {
 				whoami = await api.whoami();
+				// Connected → load this account's workers for the liveness panel. A
+				// failure here is non-fatal: the panel just stays empty.
+				try {
+					workers = (await api.myWorkers()).workers ?? [];
+				} catch {
+					workers = [];
+				}
 			} catch (e) {
 				whoamiError = e instanceof ApiError ? e : new ApiError('client_error', String(e));
 				// Key present but not bound → applicant territory: ask the
@@ -78,10 +106,25 @@
 	// null = can't compare yet.
 	const matches = $derived(local && bound ? local === bound : null);
 
+	// A recognized researcher tenant OR a connected account — both render the one
+	// unified account-identity view (identity = the account; an operated tenant is
+	// a *workspace*, shown as a secondary line, not as identity).
+	const connected = $derived(
+		!!whoami && (!!whoami.tenant_id || whoami.credential_class === 'account')
+	);
+	// The verified GitHub handle, only for a github-rooted account (display_name is
+	// the OAuth login). An orcid-rooted account shows ORCID as its root instead.
+	const githubLogin = $derived(
+		whoami?.idp === 'github' && whoami?.display_name ? whoami.display_name : null
+	);
+
 	// Onboarding tracker: a pending application wins; otherwise the newest one
 	// decides (the coordinator returns them newest-first).
 	const pendingApp = $derived(applications?.find((a) => a.status === 'pending') ?? null);
 	const newestApp = $derived(applications?.[0] ?? null);
+
+	const onlineCount = $derived((workers ?? []).filter((w) => w.status === 'active').length);
+	const offlineCount = $derived((workers ?? []).filter((w) => w.status !== 'active').length);
 </script>
 
 <h1>Overview</h1>
@@ -123,15 +166,29 @@
 						>Onboarding guide ↗</a
 					>
 				</p>
-			{:else if whoami?.tenant_id}
-				<p class="ok">Tenant <strong>{whoami.tenant_id}</strong></p>
-				<p class="kv"><span>bound key</span><code title={bound ?? ''}>{short(bound)}</code></p>
-				{#if matches === true}
-					<p class="ok small">✓ local key matches the binding</p>
-				{:else if matches === false}
-					<p class="warn small">
-						⚠ local key differs from the bound key — did you rotate it? Rebind via the operator
-						console.
+			{:else if whoami && (whoami.tenant_id || whoami.credential_class === 'account')}
+				<!-- Unified account identity: GitHub + ORCID + standing + key + workspace.
+				     Identity = the account; the tenant is demoted to a workspace line. -->
+				{#if githubLogin}
+					<p class="kv">
+						<span>github</span>
+						<a
+							class="gh"
+							href="https://github.com/{githubLogin}"
+							target="_blank"
+							rel="noopener noreferrer">{githubLogin} ↗</a
+						>
+					</p>
+				{/if}
+				{#if whoami.orcid_id}
+					<p class="kv">
+						<span>orcid</span>
+						<a
+							class="orcid"
+							href="https://orcid.org/{whoami.orcid_id}"
+							target="_blank"
+							rel="noopener noreferrer">{whoami.orcid_id} ↗</a
+						>
 					</p>
 				{/if}
 				{#if whoami.research_standing !== undefined && whoami.research_standing !== null}
@@ -154,17 +211,24 @@
 						{/if}
 					{/if}
 				{/if}
-				{#if whoami.orcid_id}
-					<p class="kv">
-						<span>orcid</span>
-						<a
-							class="orcid"
-							href="https://orcid.org/{whoami.orcid_id}"
-							target="_blank"
-							rel="noopener noreferrer">{whoami.orcid_id} ↗</a
-						>
+				<!-- Consolidated signing key: one line + a ✓ bound chip in the common
+				     case; fan out to bound-vs-local only when they actually differ. -->
+				{#if matches === false}
+					<p class="kv"><span>bound key</span><code title={bound ?? ''}>{short(bound)}</code></p>
+					<p class="kv"><span>local key</span><code title={local ?? ''}>{short(local)}</code></p>
+					<p class="warn small">
+						⚠ local key differs from the bound key — did you rotate it? Rebind via the operator
+						console.
 					</p>
 				{:else}
+					<p class="kv">
+						<span>key</span>
+						<code title={bound ?? local ?? ''}
+							>{short(bound ?? local)} <span class="chip">✓ bound</span></code
+						>
+					</p>
+				{/if}
+				{#if !whoami.orcid_id}
 					<div class="orcid-link">
 						<button class="orcid-btn" onclick={linkOrcid} disabled={orcidLinking}>
 							{orcidLinking ? 'Opening ORCID…' : 'Link ORCID'}
@@ -173,9 +237,23 @@
 					</div>
 				{/if}
 				{#if orcidNote}<p class="ok small">{orcidNote}</p>{/if}
+				<!-- The operated tenant as a workspace (not identity); a connected
+				     account with no tenant is a member of every certified tenant. -->
+				{#if whoami.tenant_id}
+					<p class="kv">
+						<span>workspace</span><a class="apply-link" href="/run">{whoami.tenant_id} →</a>
+					</p>
+				{:else}
+					<p class="muted small">
+						Member of every certified tenant — <a class="apply-link" href="/run"
+							>run the Vigiles starter →</a
+						> or create your own tenant when you bring code.
+					</p>
+				{/if}
 			{:else if whoami}
-				<!-- key present + recognized, but not a researcher tenant (e.g. anonymous/maintainer) -->
-				{#if whoami.credential_class === 'account'}<p class="ok">Connected ✓ — run the <a href="/run">Vigiles starter</a>, or create your own tenant when you bring code.</p>{:else}<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>{/if}
+				<!-- key present + recognized, but not a researcher tenant or account
+				     (e.g. anonymous/maintainer) -->
+				<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>
 			{:else if whoamiError?.kind === 'unauthorized'}
 				<!-- Key present but the coordinator has no tenant bound to it:
 				     applicant territory, not an operator problem. Track the
@@ -196,7 +274,9 @@
 					{#if newestApp.resolution_reason}
 						<p class="muted">Reason: {newestApp.resolution_reason}</p>
 					{/if}
-					<p class="muted small">You can <a class="apply-link" href="/onboard">connect a different account →</a></p>
+					<p class="muted small">
+						You can <a class="apply-link" href="/onboard">connect a different account →</a>
+					</p>
 				{:else if newestApp}
 					<!-- Unexpected: newest application is approved yet whoami still says
 					     unbound (approval seconds ago, or the key changed since). -->
@@ -217,22 +297,68 @@
 			{:else if !whoamiError}
 				<p class="muted">Confirming identity…</p>
 			{/if}
-			{#if health.identity.key_present}
+			{#if health.identity.key_present && !connected}
 				<p class="kv"><span>local key</span><code title={local ?? ''}>{short(local)}</code></p>
 			{/if}
 			<p class="path">{health.identity.key_path}</p>
 		</div>
 		<div class="card">
-			<h2>Coordinator</h2>
-			{#if health.coord.reachable}
-				<p class="ok">Reachable</p>
-			{:else}
-				<p class="warn">Unreachable</p>
+			<h2>Connection</h2>
+			<p class="kv"><span>backend</span><span class="ok">✓ reachable</span></p>
+			<p class="kv">
+				<span>coordinator</span>
+				{#if health.coord.reachable}
+					<span class="ok">✓ reachable</span>
+				{:else}
+					<span class="warn">✗ unreachable</span>
+				{/if}
+			</p>
+			{#if workers && workers.length > 0}
+				<p class="kv">
+					<span>workers</span>
+					<span>{onlineCount} online{#if offlineCount}&nbsp;· {offlineCount} offline{/if}</span>
+				</p>
+			{:else if connected}
+				<p class="kv"><span>workers</span><span class="muted">none bound</span></p>
 			{/if}
 			<p class="path">{health.coord.url}</p>
 			{#if health.coord.detail}<p class="muted">{health.coord.detail}</p>{/if}
 		</div>
 	</div>
+
+	{#if workers && workers.length > 0}
+		<div class="workers-card">
+			<h2>Your workers</h2>
+			<p class="muted">
+				Compute bound to your account, with live status. A logged-out worker drops off here; its
+				past contributions stay credited (and show on each experiment it backed).
+			</p>
+			<table class="workers">
+				<thead>
+					<tr><th>Worker</th><th>Tier</th><th>Status</th><th>Last heartbeat</th><th>Results</th></tr>
+				</thead>
+				<tbody>
+					{#each workers as w (w.worker_id)}
+						<tr>
+							<td>
+								<span class="wid">{w.worker_id}</span>
+								<span class="mono pk">{w.pubkey_hex.slice(0, 16)}…</span>
+							</td>
+							<td>T{w.trust_tier}</td>
+							<td>
+								<span class="wstatus s-{w.status}">{w.status}</span>
+								{#if w.status === 'quarantined' && w.quarantine_reason}
+									<div class="reason" title="The maintainer's reason.">{w.quarantine_reason}</div>
+								{/if}
+							</td>
+							<td class="muted">{ago(w.last_heartbeat_at)}</td>
+							<td>{w.result_count}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	{/if}
 
 	{#if whoamiError && whoamiError.kind !== 'unauthorized'}
 		<!-- Transport/coordinator failures only. The unauthorized case (key
@@ -286,7 +412,8 @@
 		padding: 1rem 1.25rem;
 		background: #0e1424;
 	}
-	.card h2 {
+	.card h2,
+	.workers-card h2 {
 		font-size: 0.8rem;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
@@ -314,6 +441,19 @@
 	}
 	a.orcid:hover {
 		text-decoration: underline;
+	}
+	a.gh {
+		font-family: ui-monospace, monospace;
+		color: #adbac7;
+		text-decoration: none;
+	}
+	a.gh:hover {
+		text-decoration: underline;
+	}
+	.chip {
+		color: #6ee7b7;
+		font-size: 0.7rem;
+		font-family: system-ui, sans-serif;
 	}
 	.orcid-link {
 		display: flex;
@@ -372,6 +512,73 @@
 		background: #1a2236;
 		padding: 0.1rem 0.3rem;
 		border-radius: 3px;
+	}
+	.workers-card {
+		border: 1px solid #1e2638;
+		border-radius: 8px;
+		padding: 1rem 1.25rem;
+		background: #0e1424;
+		margin-top: 1rem;
+	}
+	table.workers {
+		width: 100%;
+		border-collapse: collapse;
+		margin-top: 0.5rem;
+		font-size: 0.82rem;
+	}
+	table.workers th {
+		text-align: left;
+		color: #8b93a7;
+		font-weight: 600;
+		font-size: 0.68rem;
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+		padding: 0.3rem 0.6rem;
+		border-bottom: 1px solid #1e2638;
+	}
+	table.workers td {
+		padding: 0.4rem 0.6rem;
+		border-bottom: 1px solid #161d2e;
+		color: #b8bfd0;
+		vertical-align: top;
+	}
+	.wid {
+		color: #cdd5e6;
+	}
+	.mono {
+		font-family: ui-monospace, monospace;
+	}
+	.pk {
+		color: #6b7390;
+		font-size: 0.72rem;
+	}
+	.wstatus {
+		font-size: 0.72rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		padding: 0.1rem 0.4rem;
+		border-radius: 4px;
+	}
+	.s-active {
+		color: #6ee7b7;
+		background: rgba(110, 231, 183, 0.12);
+	}
+	.s-offline {
+		color: #8b93a7;
+		background: rgba(139, 147, 167, 0.12);
+	}
+	.s-quarantined {
+		color: #fbbf24;
+		background: rgba(251, 191, 36, 0.12);
+	}
+	.s-retired {
+		color: #6b7390;
+		background: rgba(107, 115, 144, 0.12);
+	}
+	.reason {
+		color: #e7a3a3;
+		font-size: 0.72rem;
+		margin-top: 0.15rem;
 	}
 	.footer {
 		margin-top: 1.5rem;

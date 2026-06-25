@@ -356,6 +356,26 @@ export interface WhoAmI {
 	research_standing_eligible_for_r2?: boolean;
 	// D8: the linked ORCID iD (e.g. "0000-0002-1825-0097"), if any. Account-scoped.
 	orcid_id?: string | null;
+	// The account-identity root, account-scoped: `display_name` is the verified
+	// handle (the GitHub login for a github root); `idp` is the provider. Lets the
+	// Identity card render the GitHub identity beside ORCID.
+	display_name?: string | null;
+	idp?: 'github' | 'orcid' | string;
+}
+
+// One worker CURRENTLY bound to the researcher's account, with derived liveness
+// for the Overview "Your workers" panel (GET /accounts/me/workers). Account-scoped:
+// the coordinator only ever returns the caller's own-account workers. Distinct
+// from OwnWorkerActivity (per-EXPERIMENT participation); this is account-level
+// connectivity with no experiment role.
+export interface AccountWorker {
+	worker_id: string;
+	pubkey_hex: string;
+	trust_tier: number;
+	status: WorkerStatus;
+	quarantine_reason?: string | null;
+	last_heartbeat_at?: string;
+	result_count: number;
 }
 
 // ── Demand board (R-D6, §9 #46) ────────────────────────────────────────────
@@ -476,6 +496,7 @@ export const api = {
 	getExperimentActivity: (id: string) =>
 		getJson<ExperimentActivity>(`/api/v0/experiments/${encodeURIComponent(id)}/activity`),
 	whoami: () => getJson<WhoAmI>('/api/v0/auth/whoami'),
+	myWorkers: () => getJson<{ workers?: AccountWorker[] }>('/api/v0/accounts/me/workers'),
 	// D8: begin linking ORCID — returns the authorize URL the browser opens.
 	// The coordinator's callback redirects back here with ?orcid=linked.
 	linkOrcidStart: () =>

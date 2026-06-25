@@ -453,4 +453,12 @@ def build_api_router() -> APIRouter:
         was rotated (R-D2.5; design §10-Q4)."""
         return await _proxy(request, "/api/v0/auth/whoami")
 
+    @router.get("/accounts/me/workers")
+    async def my_workers(request: Request) -> JSONResponse:
+        """The caller's OWN-account workers + derived liveness, for the Overview
+        "Your workers" panel. Account-scoped server-side: the coordinator resolves
+        the signing key to its account and returns only that account's currently
+        bound workers; a caller with no account gets an empty list."""
+        return await _proxy(request, "/api/v0/accounts/me/workers")
+
     return router
