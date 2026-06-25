@@ -15,7 +15,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 from auspexai_tenant.evidence import BundleVerification, verify_bundle
+from auspexai_tenant.github_device_flow import default_client_id, request_device_code
 from auspexai_tenant.runs import RunLayout
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -160,6 +162,93 @@ def build_api_router() -> APIRouter:
         coordinator returns the ORCID authorize URL the SPA opens. A 503 envelope
         means ORCID isn't configured on the coordinator yet."""
         return await _proxy_post(request, "/api/v0/accounts/orcid/start")
+
+    @router.post("/accounts/bind")
+    async def account_bind(request: Request) -> JSONResponse:
+        """Tier-1 connect: bind this dashboard's key DIRECTLY to an account (no
+        tenant, no approval — like a worker connecting). The body carries the
+        verified IdP token {idp, access_token}; the local key signs the request
+        (proof of possession) and forwards to the coordinator, which binds the
+        key → a CredentialClass.ACCOUNT credential."""
+        return await _proxy_post_body(request, "/api/v0/accounts/bind", status_code=200)
+
+    @router.post("/accounts/github/device/start")
+    async def github_device_start() -> JSONResponse:
+        """Begin GitHub's device flow (Tier-1 connect via GitHub). Returns the
+        user_code + verification_uri to show + the device_code to poll. Brokered
+        server-side — GitHub's device endpoints are not browser-CORS-friendly."""
+        try:
+            code = await run_in_threadpool(request_device_code, client_id=default_client_id())
+        except Exception as e:
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "error": {
+                        "kind": "unreachable",
+                        "message": f"GitHub device-code request failed: {e}",
+                        "coordinator_status": None,
+                    }
+                },
+            )
+        return JSONResponse(
+            content={
+                "user_code": code.user_code,
+                "verification_uri": code.verification_uri,
+                "device_code": code.device_code,
+                "interval": code.interval,
+            }
+        )
+
+    @router.post("/accounts/github/device/poll")
+    async def github_device_poll(request: Request) -> JSONResponse:
+        """Poll GitHub's token endpoint ONCE for the device flow. Returns
+        {access_token} when authorized, else {status: 'pending', error}."""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        device_code = (body or {}).get("device_code")
+        if not device_code:
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": {
+                        "kind": "client_error",
+                        "message": "device_code required",
+                        "coordinator_status": None,
+                    }
+                },
+            )
+
+        def _poll() -> dict:
+            with httpx.Client(timeout=10.0) as c:
+                r = c.post(
+                    "https://github.com/login/oauth/access_token",
+                    data={
+                        "client_id": default_client_id(),
+                        "device_code": device_code,
+                        "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    },
+                    headers={"Accept": "application/json"},
+                )
+                return r.json()
+
+        try:
+            payload = await run_in_threadpool(_poll)
+        except Exception as e:
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "error": {
+                        "kind": "unreachable",
+                        "message": f"GitHub token poll failed: {e}",
+                        "coordinator_status": None,
+                    }
+                },
+            )
+        if payload.get("access_token"):
+            return JSONResponse(content={"access_token": payload["access_token"]})
+        return JSONResponse(content={"status": "pending", "error": payload.get("error")})
 
     @router.post("/tenant-applications")
     async def submit_tenant_application(request: Request) -> JSONResponse:

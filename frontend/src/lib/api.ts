@@ -558,6 +558,28 @@ export const api = {
 		research_summary?: string;
 	}) => postJsonBody<{ application_id: string; status: string }>('/api/v0/tenant-applications', body),
 
+	// Tier-1 connect (no tenant): bind this dashboard's key to an account via a
+	// verified IdP token. The local key signs the request (proof of possession).
+	bindAccount: (body: { idp: 'orcid' | 'github'; access_token: string }) =>
+		postJsonBody<{
+			account_id: string;
+			idp?: string;
+			display_name?: string;
+			is_new_account?: boolean;
+		}>('/api/v0/accounts/bind', body),
+	githubDeviceStart: () =>
+		postJson<{
+			user_code: string;
+			verification_uri: string;
+			device_code: string;
+			interval: number;
+		}>('/api/v0/accounts/github/device/start'),
+	githubDevicePoll: (device_code: string) =>
+		postJsonBody<{ access_token?: string; status?: string; error?: string }>(
+			'/api/v0/accounts/github/device/poll',
+			{ device_code }
+		),
+
 	// Local-operations (§8). getLocalConfig returns {} when the file is absent;
 	// saveLocalConfig merges the sent tables over any existing file server-side
 	// (unmanaged tables/keys survive). An `unconfigured` ApiError means no

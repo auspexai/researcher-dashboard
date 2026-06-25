@@ -175,7 +175,7 @@
 				{#if orcidNote}<p class="ok small">{orcidNote}</p>{/if}
 			{:else if whoami}
 				<!-- key present + recognized, but not a researcher tenant (e.g. anonymous/maintainer) -->
-				<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>
+				{#if whoami.credential_class === 'account'}<p class="ok">Connected ✓ — run the <a href="/run">Vigiles starter</a>, or create your own tenant when you bring code.</p>{:else}<p class="warn">Recognized as <strong>{whoami.credential_class}</strong>, not a tenant</p>{/if}
 			{:else if whoamiError?.kind === 'unauthorized'}
 				<!-- Key present but the coordinator has no tenant bound to it:
 				     applicant territory, not an operator problem. Track the
@@ -196,7 +196,7 @@
 					{#if newestApp.resolution_reason}
 						<p class="muted">Reason: {newestApp.resolution_reason}</p>
 					{/if}
-					<p class="muted small">Re-apply <a class="apply-link" href="/onboard">with ORCID</a> · or <code>auspexai-tenant apply</code> (GitHub)</p>
+					<p class="muted small">You can <a class="apply-link" href="/onboard">connect a different account →</a></p>
 				{:else if newestApp}
 					<!-- Unexpected: newest application is approved yet whoami still says
 					     unbound (approval seconds ago, or the key changed since). -->
@@ -206,8 +206,8 @@
 					</p>
 					<p class="muted small">Reload in a moment; if it persists, contact the Maintainer.</p>
 				{:else}
-					<p class="warn">No application found for this key</p>
-					<p class="muted"><a class="apply-link" href="/onboard">Apply with ORCID →</a> · or run <code>auspexai-tenant apply</code> (GitHub)</p>
+					<p class="warn">Not connected yet</p>
+					<p class="muted"><a class="apply-link" href="/onboard">Connect your account →</a> (GitHub or ORCID)</p>
 					<p class="muted">
 						<a class="doc-link" href={ONBOARDING_URL} target="_blank" rel="noopener noreferrer"
 							>Onboarding guide ↗</a
