@@ -139,23 +139,6 @@ def build_api_router() -> APIRouter:
             return _envelope(e)
         return JSONResponse(content=data)
 
-    async def _proxy_post_body(
-        request: Request, path: str, *, status_code: int = 200
-    ) -> JSONResponse:
-        # Bodied signed POST (the ORCID apply submission). The local key signs the
-        # body (Rfc9421Auth covers Content-Digest), so the coordinator's
-        # _verify_applying_key accepts it as proof of possession for the unbound
-        # applying key. Validation (422) / pending (409) come back as envelopes.
-        try:
-            body = await request.json()
-        except Exception:
-            body = None
-        try:
-            data = await _client(request).post_json(path, body)
-        except CoordinatorError as e:
-            return _envelope(e)
-        return JSONResponse(content=data, status_code=status_code)
-
     @router.post("/accounts/orcid/start")
     async def orcid_link_start(request: Request) -> JSONResponse:
         """Begin linking the researcher's ORCID (D8): a signed POST to the
@@ -399,10 +382,13 @@ def build_api_router() -> APIRouter:
     # and track each request through assessment → resolution → release. The
     # coordinator tenant-scopes the GET lists to the signing credential.
 
-    async def _proxy_post_body(request: Request, path: str) -> JSONResponse:
-        # Demand-board submits: signed POST WITH a JSON body (Rfc9421Auth adds
-        # + covers Content-Digest). The body passes through verbatim — the
-        # coordinator validates the shape (422) and owns authorization.
+    async def _proxy_post_body(
+        request: Request, path: str, *, status_code: int = 200
+    ) -> JSONResponse:
+        # Bodied signed POST (demand-board submits, the ORCID apply, the Tier-1
+        # connect/bind). Rfc9421Auth adds + covers Content-Digest; the body passes
+        # through verbatim — the coordinator validates the shape (422) and owns
+        # authorization. status_code lets a create return 201 / a bind return 200.
         try:
             body = await request.json()
         except Exception:
@@ -420,7 +406,7 @@ def build_api_router() -> APIRouter:
             data = await _client(request).post_json(path, body=body)
         except CoordinatorError as e:
             return _envelope(e)
-        return JSONResponse(content=data)
+        return JSONResponse(content=data, status_code=status_code)
 
     @router.get("/catalog")
     async def get_catalog(request: Request) -> JSONResponse:
