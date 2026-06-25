@@ -308,21 +308,31 @@
 			<p class="kv">
 				<span>coordinator</span>
 				{#if health.coord.reachable}
-					<span class="ok">✓ reachable</span>
+					<span class="ok" title={health.coord.url}>✓ reachable</span>
 				{:else}
-					<span class="warn">✗ unreachable</span>
+					<span class="bad">✗ unreachable</span>
 				{/if}
 			</p>
 			{#if workers && workers.length > 0}
 				<p class="kv">
 					<span>workers</span>
-					<span>{onlineCount} online{#if offlineCount}&nbsp;· {offlineCount} offline{/if}</span>
+					<span
+						><span class="ok">{onlineCount} online</span>{#if offlineCount}&nbsp;· {offlineCount}
+							offline{/if}</span
+					>
 				</p>
 			{:else if connected}
 				<p class="kv"><span>workers</span><span class="muted">none bound</span></p>
 			{/if}
-			<p class="path">{health.coord.url}</p>
-			{#if health.coord.detail}<p class="muted">{health.coord.detail}</p>{/if}
+			<!-- The coordinator URL + status detail are diagnostic: shown only when
+			     UNREACHABLE (then they're actionable — which endpoint, what error). In
+			     the healthy path the URL lives on the row's hover title, and the "ok"
+			     detail is dropped (it only ever duplicated ✓ reachable). -->
+			{#if !health.coord.reachable}
+				<p class="coord-error">
+					{health.coord.url}{#if health.coord.detail} · {health.coord.detail}{/if}
+				</p>
+			{/if}
 		</div>
 	</div>
 
@@ -428,6 +438,10 @@
 		color: #fbbf24;
 		margin: 0.25rem 0;
 	}
+	.bad {
+		color: #fca5a5; /* red — a fault / failure state */
+		margin: 0.25rem 0;
+	}
 	.small {
 		font-size: 0.8rem;
 	}
@@ -508,6 +522,13 @@
 		word-break: break-all;
 		margin-top: 0.5rem;
 	}
+	.coord-error {
+		font-family: ui-monospace, monospace;
+		font-size: 0.75rem;
+		color: #fca5a5; /* red — the failing endpoint + reason, shown only when down */
+		word-break: break-all;
+		margin-top: 0.4rem;
+	}
 	code {
 		background: #1a2236;
 		padding: 0.1rem 0.3rem;
@@ -568,8 +589,8 @@
 		background: rgba(139, 147, 167, 0.12);
 	}
 	.s-quarantined {
-		color: #fbbf24;
-		background: rgba(251, 191, 36, 0.12);
+		color: #fca5a5; /* red — a fault state */
+		background: rgba(248, 113, 113, 0.14);
 	}
 	.s-retired {
 		color: #6b7390;
