@@ -1,5 +1,8 @@
 <script lang="ts">
-	let { status }: { status: string | undefined } = $props();
+	// E15: `phase` is the optional coarse run_phase (queued/running/inert/
+	// awaiting_assessment/…) — a muted suffix so the status pill stops conflating
+	// the in-flight states. Omitted → unchanged behavior.
+	let { status, phase }: { status: string | undefined; phase?: string | null } = $props();
 
 	// Map lifecycle status → a tone class. Unknown statuses fall back to neutral.
 	// Covers both experiment-lifecycle statuses and derived worker statuses
@@ -21,7 +24,7 @@
 	const cls = $derived(tone[status ?? ''] ?? 'neutral');
 </script>
 
-<span class="badge {cls}">{status ?? 'unknown'}</span>
+<span class="badge {cls}">{status ?? 'unknown'}</span>{#if phase}<span class="phase">· {phase.replace(/_/g, ' ')}</span>{/if}
 
 <style>
 	.badge {
@@ -68,5 +71,11 @@
 		color: #8b93a7;
 		background: #141a28;
 		border-color: #232c42;
+	}
+	.phase {
+		color: #8b93a7;
+		font-size: 0.72rem;
+		margin-left: 0.35em;
+		white-space: nowrap;
 	}
 </style>

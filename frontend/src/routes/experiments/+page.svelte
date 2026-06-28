@@ -63,7 +63,7 @@
 						<span class="label">{exp.tenant_experiment_label ?? exp.experiment_id}</span>
 						<span class="id">{exp.experiment_id}</span>
 					</td>
-					<td><StatusBadge status={exp.status} /></td>
+					<td><StatusBadge status={exp.status} phase={exp.run_phase} /></td>
 					<td class="muted">{fmt(exp.submitted_at)}</td>
 					<td class="muted">{exp.submissions_finalized ? 'finalized' : 'open'}</td>
 				</tr>
