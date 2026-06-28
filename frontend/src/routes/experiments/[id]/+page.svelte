@@ -84,6 +84,24 @@
 	};
 	const basisLabel = (b: string) => b.replace(/_/g, ' ');
 
+	// D10b: value-level glosses for the footprint's remaining coded fields, at the
+	// point of use (the corroboration-basis codes have BASIS_GLOSS above). Every
+	// footprint field is a firewall-#2 apparatus condition meant for the
+	// researcher — none are worker-internal, so none are hidden; these just make
+	// the codes legible. `humanize` turns a snake_case taxonomy code (e.g. the
+	// research_class "refusal_boundary_mapping") into readable text.
+	const CONTAINMENT_GLOSS: Record<string, string> = {
+		permissive: 'permissive: ordinary OS process isolation (no kernel sandbox)',
+		strict: 'strict: hardened kernel sandbox — seccomp syscall filter + namespaces + cgroup caps'
+	};
+	const APPROVAL_GLOSS: Record<string, string> = {
+		auto: 'auto-approved — the tenant tier/standing cleared the envelope checks',
+		human: 'human-reviewed — a maintainer approved this experiment'
+	};
+	const glossOf = (m: Record<string, string>, k: string | undefined | null) =>
+		k ? (m[k] ?? '') : '';
+	const humanize = (s: string | undefined | null) => (s ? s.replace(/_/g, ' ') : '—');
+
 	// Fetch a page of results (consensus or raw). `reset` replaces the list and
 	// clears the cursor; otherwise it appends the next page (Load more).
 	async function loadResults(
@@ -368,6 +386,17 @@
 	<div class="head">
 		<h1>{experiment.tenant_experiment_label ?? experiment.experiment_id}</h1>
 		<StatusBadge status={experiment.status} />
+		<!-- D12: 'approved' is overloaded for queued-vs-running. When the run is
+		     approved but not yet started (no worker has picked it up), show a
+		     glanceable queued badge with its place in line; the liveness-note below
+		     explains *why* it's waiting. Amber 'warn' tone = a waiting state, not a
+		     fault. -->
+		{#if activity?.run_phase === 'queued'}
+			<span class="badge warn" title="Approved, but not running yet — waiting for an available worker."
+				>queued{#if activity.queue_position && activity.queue_depth}
+					· {activity.queue_position}/{activity.queue_depth} in line{/if}</span
+			>
+		{/if}
 	</div>
 	<p class="id">{experiment.experiment_id}</p>
 
@@ -602,8 +631,10 @@
 							>Approval path</span
 						>
 						<span class="v">
-							experiment {fp.approval?.experiment ?? '—'}{#if fp.approval?.assessment}
-								· {fp.approval.assessment.research_class}{/if}{#if fp.approval?.promotion?.tier_set_by}
+							experiment <span title={glossOf(APPROVAL_GLOSS, fp.approval?.experiment)}
+								>{fp.approval?.experiment ?? '—'}</span
+							>{#if fp.approval?.assessment?.research_class}
+								· {humanize(fp.approval.assessment.research_class)}{/if}{#if fp.approval?.promotion?.tier_set_by}
 								· promotion by {fp.approval.promotion.tier_set_by}{/if}
 						</span>
 					</div>
@@ -636,11 +667,15 @@
 						{/if}
 					</div>
 					<div class="field wide">
-						<span class="k">Containment</span>
+						<span
+							class="k"
+							title="The sandbox the apparatus REQUIRED for this experiment vs the policies the corroborating workers actually RAN UNDER. strict = hardened kernel sandbox (seccomp syscall filter + namespaces + cgroup caps); permissive = ordinary OS process isolation."
+							>Containment</span
+						>
 						<span class="v"
-							>required <strong>{fp.containment?.required ?? '—'}</strong> · ran under {(
-								fp.containment?.ran_under ?? []
-							).join(', ') || '—'}</span
+							>required <strong title={glossOf(CONTAINMENT_GLOSS, fp.containment?.required)}
+								>{fp.containment?.required ?? '—'}</strong
+							> · ran under {(fp.containment?.ran_under ?? []).join(', ') || '—'}</span
 						>
 					</div>
 				</div>

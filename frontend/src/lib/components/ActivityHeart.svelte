@@ -112,6 +112,15 @@
 				target ? ` of ${target}` : ''
 			}`;
 		if (!live) return `${experiment.status} · awaiting the network`;
+		// D12: an approved-but-never-started run is queued behind capacity, not
+		// "between beats" — say so (and where it is in line) instead of an
+		// indefinite "waiting for the first beat…".
+		if (activity?.run_phase === 'queued') {
+			const { queue_position: pos, queue_depth: depth } = activity;
+			return pos && depth
+				? `queued · ${pos} of ${depth} in the run order`
+				: 'queued · waiting for an available worker';
+		}
 		// The contributor COUNT lives in the vitals (with its dot); the line
 		// speaks to the rhythm, not the headcount.
 		const parts: string[] = [];

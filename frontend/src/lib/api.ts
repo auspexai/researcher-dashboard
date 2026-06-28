@@ -181,6 +181,17 @@ export interface ExperimentActivity {
 	// footprint. PUBLIC: an aggregate count, no per-worker identity. Absent on the
 	// empty rollup (no work units submitted yet).
 	diverged_unit_count?: number;
+	// D12 run phase: a derived, presentation-only refinement of the overloaded
+	// 'approved' status — 'queued' (approved but nothing in flight yet) vs
+	// 'running' vs 'provisioning' vs 'paused'. Lets the UI distinguish "in line"
+	// from "in progress" without a new ExperimentStatus. Absent for terminal
+	// states (the status string already says it). TENANT_SCOPED.
+	run_phase?: 'queued' | 'running' | 'provisioning' | 'paused' | (string & {});
+	// D12 queue position: 1-based rank + total depth among approved experiments in
+	// the scheduler's registration order — "you're in line, here's where". Present
+	// only while queued; bare integers, no other-tenant identities.
+	queue_position?: number;
+	queue_depth?: number;
 }
 
 // One result in the delivery view (R-D5, coordinator M-Results). The science
