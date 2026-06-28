@@ -412,6 +412,35 @@
 		<p class="liveness-note">{activity.liveness_note}</p>
 	{/if}
 
+	<!-- D12 Inc 5: queued-capacity detail — the busy/idle ratio (5a) and a
+	     model-download progress bar (5c). The liveness-note above carries the
+	     prose; these add the glanceable numbers. Only while queued. -->
+	{#if activity?.run_phase === 'queued'}
+		{#if activity.capable_worker_count != null}
+			<p style="font-size: 0.78rem; color: #9aa3b8; margin: 0.2rem 0;">
+				{activity.capable_busy_count ?? 0} of {activity.capable_worker_count} eligible
+				worker{activity.capable_worker_count === 1 ? '' : 's'} busy
+			</p>
+		{/if}
+		{#if activity.download_progress}
+			<div style="margin: 0.25rem 0; max-width: 320px;">
+				<div style="font-size: 0.78rem; color: #9aa3b8; margin-bottom: 0.2rem;">
+					downloading model{activity.download_progress.pct != null
+						? ` · ${activity.download_progress.pct}%`
+						: '…'}
+				</div>
+				{#if activity.download_progress.pct != null}
+					<div style="height: 6px; background: #1a2236; border-radius: 999px; overflow: hidden;">
+						<div
+							style="height: 100%; width: {activity.download_progress
+								.pct}%; background: linear-gradient(90deg, #155e6b, #67e8f9);"
+						></div>
+					</div>
+				{/if}
+			</div>
+		{/if}
+	{/if}
+
 	<!-- A state-unavailable action: shown disabled with the reason it's not
 	     usable yet, so the full lifecycle vocabulary stays discoverable. -->
 	{#snippet unavailable(label: string, reason: string, variant: string)}

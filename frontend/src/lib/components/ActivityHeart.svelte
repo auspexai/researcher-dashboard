@@ -100,10 +100,37 @@
 		if (t == null) return '—';
 		return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 	}
+	// D12 finish-ETA: a hedged remaining-time estimate. Always prefixed "~" — it's
+	// an extrapolation from the recent observed rate, not a promise.
+	function fmtLeft(ms: number): string {
+		const m = Math.round(ms / 60000);
+		if (m < 1) return '~<1m left';
+		if (m < 60) return `~${m}m left`;
+		const h = Math.floor(m / 60);
+		const rem = m % 60;
+		return rem ? `~${h}h ${rem}m left` : `~${h}h left`;
+	}
 
 	const completions = $derived(activity?.completions_total ?? 0);
 	const target = $derived(activity?.replication_target_total ?? 0);
 	const contributors = $derived(activity?.active_contributor_count ?? 0);
+
+	// D12 finish-ETA: extrapolate remaining time from the throughput observed in
+	// the pulse window — reuses the same samples as the cadence. Only when there's
+	// real signal (>=3 beats, a positive rate, work remaining); otherwise null and
+	// nothing is shown (no misleading number). Rate = units completed between the
+	// first and last observed beat / that span.
+	const etaMs = $derived.by(() => {
+		if (terminal || target <= 0) return null;
+		const remaining = target - completions;
+		if (remaining <= 0) return null;
+		const beated = beats.filter((b) => b.delta > 0);
+		if (beated.length < 3) return null;
+		const span = beated[beated.length - 1].t - beated[0].t;
+		const completedInSpan = beated.slice(1).reduce((s, b) => s + b.delta, 0);
+		if (span <= 0 || completedInSpan <= 0) return null;
+		return (remaining * span) / completedInSpan; // remaining / (units per ms)
+	});
 
 	// One plain-language line — state in words.
 	const narration = $derived.by(() => {
@@ -131,6 +158,7 @@
 		} else if (lastBeatT != null) {
 			parts.push('cadence learning…');
 		}
+		if (etaMs != null) parts.push(fmtLeft(etaMs));
 		return parts.length ? parts.join(' · ') : 'waiting for the first beat…';
 	});
 

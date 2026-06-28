@@ -192,6 +192,19 @@ export interface ExperimentActivity {
 	// only while queued; bare integers, no other-tenant identities.
 	queue_position?: number;
 	queue_depth?: number;
+	// D12 busy/idle: eligible-worker capacity. capable_worker_count = active
+	// workers that can run this experiment; capable_busy_count = of those, how
+	// many are currently busy on some run.
+	capable_worker_count?: number;
+	capable_busy_count?: number;
+	// D12 5c: in-flight model-download progress for a queued experiment whose
+	// required model a volunteer is pulling. pct is null until a total is known.
+	download_progress?: {
+		model_id?: string;
+		bytes_downloaded?: number | null;
+		total_bytes?: number | null;
+		pct?: number | null;
+	};
 }
 
 // One result in the delivery view (R-D5, coordinator M-Results). The science
