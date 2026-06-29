@@ -909,6 +909,10 @@
 			Collected {fmt(experiment.results_collected_at)} — data custody transferred to you.
 		</p>
 	{/if}
+	<p class="analyze-hint">
+		Have your bundle? <a href="/reference">Reference › Understand your results</a> — how to read it,
+		what every <code>output.*</code> column means, and the analysis recipes.
+	</p>
 	{#if exportMsg}
 		<p class="export-msg">{exportMsg}</p>
 	{/if}
@@ -1628,6 +1632,18 @@
 		font-size: 0.83rem;
 		color: #8bd0a8;
 		margin: 0.4rem 0;
+	}
+	.analyze-hint {
+		font-size: 0.83rem;
+		color: #8b93a7;
+		margin: 0.4rem 0;
+	}
+	.analyze-hint a {
+		color: #7aa2ff;
+		text-decoration: none;
+	}
+	.analyze-hint a:hover {
+		text-decoration: underline;
 	}
 	table.results-tbl {
 		width: 100%;

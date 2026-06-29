@@ -82,7 +82,16 @@ def _classify_response(
             "console, then retry.",
         )
     if status_code == 404:
-        return ("not_found", 404, "no such experiment for this tenant")
+        # Prefer the coordinator's OWN message (a real experiment-not-found says
+        # "no experiment with id …"); otherwise a GENERIC not-found. Do NOT
+        # assume every 404 is an experiment — a non-experiment route (e.g. the
+        # model catalog) 404ing was being mislabeled as a phantom missing
+        # experiment.
+        return (
+            "not_found",
+            404,
+            conflict_message or "the coordinator returned 404 Not Found for this request",
+        )
     if status_code == 409:
         # A lifecycle action collided with the experiment's current state
         # (invalid_status_transition / finalize_not_applicable). Surface the
@@ -139,12 +148,13 @@ class CoordinatorClient:
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         """Raise a classified `CoordinatorError` for any non-2xx response. A 409
-        or 425 carries the coordinator's own reason; other statuses use canned
-        messages (404 is deliberately generic — see `_classify_response`)."""
+        or 425 carries the coordinator's own reason; a 404 prefers the
+        coordinator's message (a real experiment-not-found) and otherwise falls
+        back to a GENERIC not-found — see `_classify_response`."""
         if response.status_code < 400:
             return
         conflict_message = (
-            _coord_error_message(response) if response.status_code in (409, 425) else None
+            _coord_error_message(response) if response.status_code in (404, 409, 425) else None
         )
         kind, http_status, message = _classify_response(response.status_code, conflict_message)
         raise CoordinatorError(

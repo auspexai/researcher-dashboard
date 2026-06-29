@@ -5,6 +5,7 @@
 		{ href: '/', label: 'Overview' },
 		{ href: '/run', label: 'Run Experiment' },
 		{ href: '/experiments', label: 'My Experiments' },
+		{ href: '/reference', label: 'Reference' },
 		{ href: '/requests', label: 'Requests' }
 	];
 

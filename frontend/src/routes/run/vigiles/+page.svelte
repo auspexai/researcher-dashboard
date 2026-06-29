@@ -1,12 +1,9 @@
 <script lang="ts">
-	// The Vigiles starter hub — what it is, how to run it, and the reference
-	// links (SDK docs, onboarding, ethics, best practices). The Swagger/ReDoc
-	// analog from the ops console: a per-tenant detail/docs page; for the
-	// certified starter it doubles as the learning front door.
-	const ONBOARDING = 'https://github.com/auspexai/.github/blob/main/ONBOARDING.md';
-	const SDK_README = 'https://github.com/auspexai/tenant-sdk#readme';
+	// The Vigiles capability page — what it IS and how to run THIS specific
+	// starter. Capability-specific only: the general, capability-agnostic
+	// material (onboarding, SDK, ethics, how to analyze results) lives once under
+	// /reference, which this page links to rather than re-hosting.
 	const VIGILES_REPO = 'https://github.com/auspexai/vigiles-tenant';
-	const ETHICS = 'https://github.com/auspexai/.github/blob/main/RESEARCH_ETHICS_POLICY.md';
 </script>
 
 <p class="back"><a href="/run">← Run Experiment</a></p>
@@ -63,30 +60,26 @@ auspexai-tenant experiment launch</code></pre>
 			<strong>Take custody.</strong> When it converges, collect + verify the evidence bundle:
 			<pre><code>auspexai-tenant experiment export latest --verify</code></pre>
 			It lands organized under <code>runs/&lt;label&gt;/bundle.json</code>.
+			<span class="aside">Now analyze it → <a href="/reference">Reference › Understand your
+					results</a> — how to read it, what every column means, and the analysis recipes.</span>
 		</li>
 	</ol>
 </section>
 
 <section>
-	<h2>Reference &amp; best practices</h2>
+	<h2>Vigiles reference</h2>
 	<ul class="links">
 		<li>
-			<a href={ONBOARDING} target="_blank" rel="noopener noreferrer">Onboarding guide ↗</a>
-			— from install to a bound tenant in four steps.
-		</li>
-		<li>
-			<a href={SDK_README} target="_blank" rel="noopener noreferrer">Tenant SDK — capability map ↗</a>
-			— author, submit, drive, and the evidence verify chain.
-		</li>
-		<li>
 			<a href={VIGILES_REPO} target="_blank" rel="noopener noreferrer">vigiles-tenant ↗</a>
-			— the starter's source; copy it as the template for your own tenant.
-		</li>
-		<li>
-			<a href={ETHICS} target="_blank" rel="noopener noreferrer">Research ethics policy ↗</a>
-			— risk classes, review, and what bringing your own code (R2+) entails.
+			— the certified starter's source: its <code>experiment.toml</code> (incl. the declared
+			feature schema), the drift driver, and the package. Copy it as the template for your own
+			tenant.
 		</li>
 	</ul>
+	<p class="general">
+		General docs — onboarding, the SDK, research ethics, and how to analyze your results — live in
+		<a href="/reference">Reference</a>, not here, so they're the same for every experiment.
+	</p>
 </section>
 
 <style>
@@ -128,6 +121,11 @@ auspexai-tenant experiment launch</code></pre>
 		margin-top: 0.5rem;
 		color: #8b93a7;
 		font-size: 0.82rem;
+	}
+	.general {
+		margin-top: 0.75rem;
+		color: #8b93a7;
+		font-size: 0.84rem;
 	}
 	section {
 		margin-top: 1.5rem;
