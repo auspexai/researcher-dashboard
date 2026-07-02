@@ -230,6 +230,18 @@ export interface ResultItem {
 	worker_pubkey_hex?: string;
 	exit_code?: number;
 	environment?: Record<string, unknown>;
+	// C7 Inc 4: present on the consensus row of a within_cell_tolerance unit —
+	// HOW the replicas agreed (persisted by the coordinator at issuance):
+	// deterministic representative + per-feature spread vs the declared envelope.
+	consensus_evidence?: {
+		method?: string;
+		representative?: Record<string, unknown>;
+		representative_hash?: string;
+		spread?: Record<string, number>;
+		envelope?: Record<string, { rule?: string; rel?: number; abs?: number; min?: number }>;
+		agreeing_workers?: number;
+		outlier_count?: number;
+	};
 }
 
 export interface ResultList {

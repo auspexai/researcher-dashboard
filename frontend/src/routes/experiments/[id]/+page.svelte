@@ -102,6 +102,40 @@
 		k ? (m[k] ?? '') : '';
 	const humanize = (s: string | undefined | null) => (s ? s.replace(/_/g, ' ') : '—');
 
+	// C7 Inc 4: plain-language "how this unit agreed" for a tolerance consensus
+	// row — the point-of-use legibility the bare hash never gave (a tolerance run
+	// reads "corroborated within the envelope, spread Δ, M outliers"). The tooltip
+	// details each feature's observed spread against its declared allowance.
+	type TolEvidence = NonNullable<ResultItem['consensus_evidence']>;
+	function tolSummary(ev: TolEvidence): string {
+		const n = ev.agreeing_workers ?? 0;
+		const o = ev.outlier_count ?? 0;
+		const agreed = `${n} worker${n === 1 ? '' : 's'} agreed within tolerance`;
+		return o > 0 ? `${agreed} · ${o} outlier${o === 1 ? '' : 's'} recorded` : agreed;
+	}
+	function tolDetail(ev: TolEvidence): string {
+		const lines: string[] = [
+			'Replicas agreed within the declared tolerance envelope; the consensus value is the ' +
+				'deterministic representative (its hash is what the attestation binds). ' +
+				'Observed spread vs allowed, per feature:'
+		];
+		const env = ev.envelope ?? {};
+		for (const [feat, sp] of Object.entries(ev.spread ?? {})) {
+			const e = env[feat] ?? {};
+			let allowed: string;
+			if (e.rule === 'set_jaccard') allowed = `set overlap ≥ ${e.min}`;
+			else if (e.rule === 'categorical_exact') allowed = 'must match exactly';
+			else
+				allowed =
+					[e.rel != null ? `rel ≤ ${e.rel}` : '', e.abs != null ? `abs ≤ ${e.abs}` : '']
+						.filter(Boolean)
+						.join(', ') || 'declared rule';
+			const observed = e.rule === 'set_jaccard' ? `set distance ${sp}` : `spread ${sp}`;
+			lines.push(`${feat}: ${observed} (allowed: ${allowed})`);
+		}
+		return lines.join('\n');
+	}
+
 	// Fetch a page of results (consensus or raw). `reset` replaces the list and
 	// clears the cursor; otherwise it appends the next page (Load more).
 	async function loadResults(
@@ -964,6 +998,11 @@
 						<td class="mono">
 							{r.unit_id}
 							{#if r.is_consensus}<span class="tag">consensus</span>{/if}
+							{#if r.is_consensus && r.consensus_evidence}
+								<div class="tol muted" title={tolDetail(r.consensus_evidence)}>
+									{tolSummary(r.consensus_evidence)}
+								</div>
+							{/if}
 						</td>
 						<td class="mono pk">{r.result_id}</td>
 						<td>
@@ -1678,6 +1717,14 @@
 		border: 1px solid #2a3550;
 		border-radius: 4px;
 		padding: 0.05rem 0.3rem;
+	}
+	/* C7 Inc 4: the "how this unit agreed" line under a tolerance consensus tag —
+	   calm neutral text (color-discipline: informational, not an alert). */
+	.tol {
+		font-family: system-ui, sans-serif;
+		font-size: 0.68rem;
+		margin-top: 0.15rem;
+		cursor: help;
 	}
 	.aged {
 		font-size: 0.74rem;
