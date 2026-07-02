@@ -94,17 +94,49 @@ _verify_sha256() { # local-path  download-url
   warn "⚠ SIGNATURE NOT VERIFIED and $base absent from SHA256SUMS — proceeding on transport trust only."
 }
 
+# Fetch a URL with bounded retries. Transient blips (residential networks,
+# GitHub's edge) are NORMAL — one must not kill an install — and a GitHub API
+# rate-limit must SAY so instead of hiding behind a generic "could not reach".
+# Echoes the response body; exit 0 = ok, 3 = rate-limited (403/429) after the
+# budget, 1 = other failure after the budget.
+_fetch_with_retry() { # url
+  local url="$1" out http i rc=1
+  for i in 1 2 3; do
+    [ "$i" -gt 1 ] && sleep "$i"
+    out="$(curl -sSL -w '\n%{http_code}' "$url" 2>/dev/null)" || { rc=1; continue; }
+    http="${out##*$'\n'}"
+    case "$http" in
+      2*)
+        printf '%s' "${out%$'\n'*}"
+        return 0
+        ;;
+      403 | 429) rc=3 ;;
+      *) rc=1 ;;
+    esac
+  done
+  return "$rc"
+}
+
 # Resolve the latest signed release wheel for a repo, download + verify it.
 VERIFIED_WHL=""
 fetch_verified_wheel() { # display-name  github-repo -> sets VERIFIED_WHL
-  local name="$1" repo="$2" meta tag whl url
-  meta="$(curl -fsSL "https://api.github.com/repos/auspexai/$repo/releases/latest" 2>/dev/null)" \
-    || fail "could not reach GitHub for the latest $name release"
+  local name="$1" repo="$2" meta tag whl url rc i
+  meta="$(_fetch_with_retry "https://api.github.com/repos/auspexai/$repo/releases/latest")"
+  rc=$?
+  if [ "$rc" = "3" ]; then
+    fail "GitHub API rate limit hit fetching the latest $name release (60/hr per IP, unauthenticated) — wait a few minutes and re-run"
+  elif [ "$rc" != "0" ]; then
+    fail "could not reach GitHub for the latest $name release (after 3 attempts) — check your network and re-run"
+  fi
   tag="$(printf '%s' "$meta" | sed -nE 's/.*"tag_name": *"([^"]+)".*/\1/p' | head -1)"
   whl="$(printf '%s' "$meta" | grep -oE '"name": *"[^"]+\.whl"' | head -1 | sed -E 's/.*"([^"]+\.whl)".*/\1/')"
   [ -n "$tag" ] && [ -n "$whl" ] || fail "no signed wheel in the latest $name release"
   url="https://github.com/auspexai/$repo/releases/download/$tag/$whl"
-  curl -fsSL -o "$WHEELS_TMP/$whl" "$url" || fail "could not download $whl"
+  for i in 1 2 3; do
+    [ "$i" -gt 1 ] && sleep "$i"
+    if curl -fsSL -o "$WHEELS_TMP/$whl" "$url"; then break; fi
+    [ "$i" = 3 ] && fail "could not download $whl (after 3 attempts) — check your network and re-run"
+  done
   verify_artifact "$WHEELS_TMP/$whl" "$url"
   VERIFIED_WHL="$WHEELS_TMP/$whl"
 }
