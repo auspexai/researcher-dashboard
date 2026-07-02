@@ -85,6 +85,9 @@ def _shape_verification(v: BundleVerification, bundle: dict[str, Any]) -> dict[s
         {"name": "Completeness", "state": tri(v.completeness_ok)},
         {"name": "Input binding", "state": tri(v.inputs_bound_ok)},
         {"name": "Apparatus footprint", "state": tri(v.footprint_ok)},
+        # C7 Inc 4: tolerance units' attested representative hashes recompute
+        # from the bundled evidence (n/a when the bundle has no tolerance units).
+        {"name": "Tolerance evidence", "state": tri(v.tolerance_evidence_ok)},
         {
             "name": "Worker signatures",
             "state": "pass" if ws.ok else "fail",
