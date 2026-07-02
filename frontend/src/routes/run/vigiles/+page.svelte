@@ -21,10 +21,15 @@
 	<h2>What it is</h2>
 	<p>
 		Vigiles repeatedly probes a local model for behavioural drift and runs that probe through the
-		full pipeline: replicated execution across volunteer workers, hash-agreement consensus, and a
-		signed, Rekor-anchored <em>evidence bundle</em> you take custody of. It is
-		<strong>package-bound and certified</strong>, so it clears the submission gate for any
-		<strong>R1+</strong> researcher with no code review — the safest possible first run.
+		full pipeline: replicated execution across volunteer workers, consensus within a
+		<em>declared, calibrated tolerance envelope</em> (a version-skewed worker is a recorded
+		outlier, never hidden), and a signed, Rekor-anchored <em>evidence bundle</em> you take custody
+		of. The starter also ships a complete <strong>pre-registered design</strong> — its hypothesis,
+		analysis, and stopping rule are notarized in the public transparency log <em>before</em> any
+		data exists, so your bundle proves <code>design ≺ data</code>. It is
+		<strong>package-bound and certified</strong> (the certificate locks the tolerance envelope
+		too), so it clears the submission gate for any <strong>R1+</strong> researcher with no code
+		review — the safest possible first run.
 	</p>
 </section>
 
@@ -47,19 +52,27 @@
 			<strong>Run it.</strong> From inside the cloned repo, one command does the whole
 			lifecycle — build, submit, wait for the maintainer's approval, then drive:
 			<pre><code>cd vigiles-tenant
-auspexai-tenant experiment launch</code></pre>
-			No flags needed — it finds <code>experiment.toml</code> by walking up from the repo, and
-			reuses the same <code>tenant_key</code> that <code>apply</code> created (Vigiles doesn't
-			override <code>key_path</code>).
-			Driving begins automatically on approval (Ctrl-C is safe — re-run to resume from the
-			journal). <span class="aside">Prefer the dashboard? Point it at the repo with
+auspexai-tenant experiment launch --profile starter</code></pre>
+			It finds <code>experiment.toml</code> by walking up from the repo and reuses the same
+			<code>tenant_key</code> that <code>apply</code> created; <code>--profile starter</code>
+			selects the certified, pre-registered configuration.
+			Driving begins automatically on approval. <strong>Ctrl-C aborts the run cleanly</strong>
+			— server-side too, so nothing is left orphaned; pass <code>--resumable</code> to instead
+			leave it running and pick it up later with
+			<code>auspexai-tenant experiment run latest</code> (transient network blips are retried
+			automatically). <span class="aside">Prefer the dashboard? Point it at the repo with
 				<code>WORKSPACE_DIR</code> and the <a href="/run">Run your workspace</a> Build → Submit →
 				Run controls do the same.</span>
 		</li>
 		<li>
 			<strong>Take custody.</strong> When it converges, collect + verify the evidence bundle:
 			<pre><code>auspexai-tenant experiment export latest --verify</code></pre>
-			It lands organized under <code>runs/&lt;label&gt;/bundle.json</code>.
+			It lands organized under <code>runs/&lt;label&gt;/bundle.json</code>. The verify chain
+			checks the whole story: custody + worker signatures, the attested result set,
+			<code>tolerance: ok</code> (the consensus evidence recomputes), <code>pre-reg: ok</code>
+			and <code>design&lt;data: ok</code> (the design provably preceded the data — the ordering
+			anchor lands on the hourly transparency-log sweep, so it may read
+			<em>pending</em> right after a run).
 			<span class="aside">Now analyze it → <a href="/reference">Reference › Understand your
 					results</a> — how to read it, what every column means, and the analysis recipes.</span>
 		</li>

@@ -8,7 +8,7 @@ binding on the Overview page.
 
 ## Status
 
-**R-D0 — scaffold (2026-05-28).** FastAPI backend + SvelteKit static frontend; `auspexai-dashboard serve` runs the dashboard locally and opens a browser. Placeholder pages + a health probe (coordinator connectivity + tenant-key presence). No authenticated coordinator calls yet. Full design + milestones: `Documentation/AuspexAI/v0.1.0/researcher_dashboard_design.md`.
+**LIVE — the researcher onramp (2026-07).** FastAPI backend + SvelteKit static frontend; `auspexai-dashboard serve` runs the dashboard locally and opens a browser. Shipped: Tier-1 onboarding (ORCID + GitHub connect → run the certified starter), signed coordinator calls throughout, experiment list/detail with lifecycle actions, live activity + run-phase legibility, the integrity panel (attestation, Rekor anchor, apparatus footprint, tolerance-consensus evidence — "N workers agreed within tolerance · M outliers"), evidence-bundle export with the full client-side verify chain (custody, completeness, input binding, worker signatures, tolerance evidence, pre-registration + `design ≺ data`, deviation disclosure), citation prep, and the /reference docs home. Installed via `curl -fsSL https://getresearcher.auspexai.network | bash`. Original design + milestones: `researcher_dashboard_design.md`.
 
 The researcher dashboard is one of four Phase 1 UI surfaces per §5.18 of the AuspexAI Principles & Scope document.
 
@@ -24,12 +24,13 @@ For frontend dev with live reload: `cd frontend && pnpm dev` (proxies `/api` to 
 
 ### Milestones
 
-- **R-D0** ✅ scaffold (this).
-- **R-D1** prerequisites in sibling repos: RFC 9421 request signer in `tenant-sdk`; tenant-scoped `GET /experiments/{id}/receipts` on `platform`.
-- **R-D2** my-experiments list + detail with work-unit/replication progress (signed reads).
-- **R-D3** my-experiment receipts view.
-- **R-D4** lifecycle actions (abort; pause/resume).
-- **R-D5 (v1)** live SSE progress; receipt-detail verification; create-experiment form.
+- **R-D0** ✅ scaffold.
+- **R-D1** ✅ prerequisites in sibling repos (RFC 9421 request signer; tenant-scoped receipts).
+- **R-D2** ✅ my-experiments list + detail with work-unit/replication progress (signed reads).
+- **R-D3** ✅ my-experiment receipts view.
+- **R-D4** ✅ lifecycle actions (abort; pause/resume; finalize).
+- **R-D5** ✅ results delivery + evidence-bundle export with client-side verification.
+- Since then: Tier-1 onboarding (ORCID/GitHub), the Run Experiment + /reference + /run/vigiles pages, run-phase + queue legibility, tolerance-consensus evidence, pre-registration verify surfacing. Releases are tagged `v0.1.x`; the installer always serves the latest.
 
 ## Scope
 

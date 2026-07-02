@@ -47,8 +47,12 @@
 	<pre><code>auspexai-tenant experiment launch     # build → submit → await approval → drive</code></pre>
 	<p class="sub">
 		Profiles (<code>--profile starter</code> / <code>research</code>) select named config
-		override-sets; runs appear on <a href="/experiments">My Experiments</a> once the coordinator
-		accepts them.
+		override-sets — the starter is certified <em>and pre-registered</em> (its design is anchored
+		before data exists); runs appear on <a href="/experiments">My Experiments</a> once the
+		coordinator accepts them. If your analysis genuinely changes after you've seen data, declare
+		it honestly: <code>auspexai-tenant experiment deviate latest --what "…" --why "…"</code> —
+		an append-only, signed record; exploratory analysis is welcome, it just can't masquerade as
+		confirmatory.
 	</p>
 </section>
 
@@ -87,9 +91,10 @@
 <section>
 	<h2>4 · Trust &amp; citation</h2>
 	<p>
-		Every result is wrapped in integrity context — replicated execution, hash-agreement consensus,
-		a signed Rekor-anchored attestation, and an apparatus footprint — so a finding is externally
-		defensible. The <a href={READING_EVIDENCE} target="_blank" rel="noopener noreferrer"
+		Every result is wrapped in integrity context — replicated execution, consensus within a
+		declared tolerance envelope (byte-exact where pinned), a signed Rekor-anchored attestation, a
+		pre-registered design whose anchor provably precedes the data (<code>design ≺ data</code>),
+		and an apparatus footprint — so a finding is externally defensible. The <a href={READING_EVIDENCE} target="_blank" rel="noopener noreferrer"
 			>evidence guide ↗</a
 		>
 		covers verification + how to cite the transparency-log anchor; your experiment's
