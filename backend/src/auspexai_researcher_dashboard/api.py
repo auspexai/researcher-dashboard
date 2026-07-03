@@ -27,12 +27,35 @@ from .coordinator import CoordinatorClient, CoordinatorError
 
 
 def _runs_base(cfg) -> Path:
-    """Where the dashboard writes evidence bundles. The configured workspace's
-    `runs/` when set — so a Web-UI export lands exactly where the CLI's
-    `experiment export` writes — else a findable per-user default."""
+    """Where the dashboard WRITES run artifacts: the configured workspace's
+    `runs/` when set, else the SDK's stable per-user base — the same path a
+    fresh CLI context resolves, so both surfaces converge without config."""
     if getattr(cfg, "workspace_dir", None):
         return cfg.workspace_dir / "runs"
-    return Path.home() / ".local" / "share" / "auspexai-researcher" / "runs"
+    from auspexai_tenant.runs import stable_runs_base
+
+    return stable_runs_base()
+
+
+def _runs_bases(cfg) -> list[Path]:
+    """Every base the dashboard READS, in precedence order. The 2026-07-03 live
+    lesson (a launch-scored run showed "no benchmark" in the dashboard): the CLI
+    and the dashboard resolved DIFFERENT runs dirs, and each surface saw only
+    its own. Reads now union: the workspace base, $AUSPEXAI_RUNS_DIR, the SDK's
+    stable per-user base, and this app's pre-fix legacy dir (where reports
+    computed before the unification live)."""
+    import os
+
+    bases: list[Path] = [_runs_base(cfg)]
+    env = os.environ.get("AUSPEXAI_RUNS_DIR")
+    if env:
+        bases.append(Path(env).expanduser())
+    from auspexai_tenant.runs import stable_runs_base
+
+    bases.append(stable_runs_base())
+    bases.append(Path.home() / ".local" / "share" / "auspexai-researcher" / "runs")
+    seen: set[Path] = set()
+    return [b for b in bases if not (b in seen or seen.add(b))]
 
 
 def _save_bundle(cfg, key: str, bundle: dict[str, Any]) -> str | None:
@@ -49,14 +72,17 @@ def _save_bundle(cfg, key: str, bundle: dict[str, Any]) -> str | None:
         return None
 
 
-def _scan_benchmark_records(base: Path) -> list[dict[str, Any]]:
-    """Every saved drift-benchmark record under runs/ (full records, with their
-    path), newest first. Garbage-tolerant: an unreadable file is skipped."""
+def _scan_benchmark_records(bases: Path | list[Path]) -> list[dict[str, Any]]:
+    """Every saved drift-benchmark record under the given runs base(s) (full
+    records, with their path), newest first, de-duplicated by (observation,
+    reference). Garbage-tolerant: an unreadable file is skipped."""
     records: list[dict[str, Any]] = []
-    try:
-        candidates = sorted(base.glob("*/benchmark_vs_*.json"))
-    except OSError:
-        candidates = []
+    candidates: list[Path] = []
+    for base in [bases] if isinstance(bases, Path) else bases:
+        try:
+            candidates.extend(sorted(base.glob("*/benchmark_vs_*.json")))
+        except OSError:
+            continue
     for path in candidates:
         try:
             rec = json.loads(path.read_text())
@@ -66,16 +92,32 @@ def _scan_benchmark_records(base: Path) -> list[dict[str, Any]]:
             rec["path"] = str(path)
             records.append(rec)
     records.sort(key=lambda r: r.get("computed_at") or "", reverse=True)
-    return records
+    seen: set[tuple] = set()
+    deduped = []
+    for r in records:
+        key = (
+            (r.get("observation") or {}).get("experiment_id"),
+            (r.get("reference") or {}).get("experiment_id"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(r)
+    return deduped
 
 
-def _find_benchmark_declaration(base: Path, experiment_id: str) -> dict[str, Any] | None:
+def _find_benchmark_declaration(
+    bases: Path | list[Path], experiment_id: str
+) -> dict[str, Any] | None:
     """The run's benchmark declaration (written at launch beside the run) —
-    runs/*/benchmark_reference.json with a matching experiment_id."""
-    try:
-        candidates = sorted(base.glob("*/benchmark_reference.json"))
-    except OSError:
-        return None
+    runs/*/benchmark_reference.json with a matching experiment_id, searched
+    across every readable base."""
+    candidates: list[Path] = []
+    for base in [bases] if isinstance(bases, Path) else bases:
+        try:
+            candidates.extend(sorted(base.glob("*/benchmark_reference.json")))
+        except OSError:
+            continue
     for path in candidates:
         try:
             rec = json.loads(path.read_text())
@@ -437,12 +479,13 @@ def build_api_router() -> APIRouter:
           out of `benchmarks` — never a fabricated score).
         Ad-hoc scoring against an arbitrary reference is a CLI capability
         (`auspexai-tenant benchmark drift`), deliberately not a dashboard one."""
-        base = _runs_base(request.app.state.config)
-        records = _scan_benchmark_records(base)
+        records = _scan_benchmark_records(_runs_bases(request.app.state.config))
         mine = [
             r for r in records if (r.get("observation") or {}).get("experiment_id") == experiment_id
         ]
-        declaration = _find_benchmark_declaration(base, experiment_id)
+        declaration = _find_benchmark_declaration(
+            _runs_bases(request.app.state.config), experiment_id
+        )
         materialize_error: str | None = None
         if declaration and not any(
             (r.get("reference") or {}).get("experiment_id")
@@ -484,9 +527,8 @@ def build_api_router() -> APIRouter:
         """Summary rows for every saved drift-benchmark report, newest first —
         the data source for the experiments list's benchmark column (and, later,
         the G5 publisher). Not a navigation surface of its own."""
-        base = _runs_base(request.app.state.config)
         rows: list[dict[str, Any]] = []
-        for rec in _scan_benchmark_records(base):
+        for rec in _scan_benchmark_records(_runs_bases(request.app.state.config)):
             rep = rec.get("report") or {}
             rows.append(
                 {

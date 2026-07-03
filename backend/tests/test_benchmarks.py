@@ -26,7 +26,11 @@ def _config(tmp_path: Path) -> ResearcherDashboardConfig:
 
 
 def _saved_report(tmp_path: Path, label: str, ref: str, peak: float, at: str) -> None:
-    d = tmp_path / "runs" / label
+    _saved_report_at(tmp_path / "runs", label, ref, peak, at)
+
+
+def _saved_report_at(base: Path, label: str, ref: str, peak: float, at: str) -> None:
+    d = base / label
     d.mkdir(parents=True, exist_ok=True)
     (d / f"benchmark_vs_{ref}.json").write_text(
         json.dumps(
@@ -138,3 +142,16 @@ def test_experiment_benchmarks_lists_only_its_own(tmp_path: Path) -> None:
     # Newest first; the full report rides along (no second fetch to expand).
     assert rows[0]["reference"]["experiment_id"] == "exp-ref2"
     assert rows[0]["report"]["peak_eu"] == 1.1
+
+
+def test_reads_union_of_bases_including_env_runs_dir(tmp_path: Path, monkeypatch) -> None:
+    # The 2026-07-03 live bug: launch wrote beside the run in the CLI's runs
+    # dir; the dashboard scanned only its own base and reported "no benchmark"
+    # for a scored run. Reads now union every candidate base.
+    cli_base = tmp_path / "cli-runs"
+    _saved_report_at(cli_base, "run-a", "exp-ref", 6.67, "2026-07-03T10:00:00+00:00")
+    monkeypatch.setenv("AUSPEXAI_RUNS_DIR", str(cli_base))
+    client = TestClient(create_app(_config(tmp_path)))
+    r = client.get("/api/v0/experiments/exp-run-a/benchmarks")
+    assert r.status_code == 200
+    assert r.json()["benchmarks"][0]["report"]["peak_eu"] == 6.67

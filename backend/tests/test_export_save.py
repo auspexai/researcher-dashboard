@@ -26,11 +26,13 @@ def test_save_to_workspace_runs(tmp_path: Path) -> None:
 
 
 def test_save_no_workspace_uses_home_default(tmp_path: Path, monkeypatch) -> None:
+    # Unified 2026-07-03: with no workspace the dashboard writes the SDK's
+    # STABLE per-user base — the same path a fresh CLI resolves — so both
+    # surfaces converge without config (the pre-fix auspexai-researcher dir is
+    # still READ via the union scan).
     monkeypatch.setenv("HOME", str(tmp_path))
     p = _save_bundle(_Cfg(workspace_dir=None), "lab-x", {"y": 2})
-    expected = (
-        tmp_path / ".local" / "share" / "auspexai-researcher" / "runs" / "lab-x" / "bundle.json"
-    )
+    expected = tmp_path / ".local" / "share" / "auspexai-tenant" / "runs" / "lab-x" / "bundle.json"
     assert p == str(expected)
     assert expected.exists()
 
