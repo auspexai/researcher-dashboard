@@ -70,15 +70,31 @@
 	// experiment against a chosen reference, in envelope units. Computed
 	// server-side over two custody-verified bundles; the report also persists
 	// beside the run so the /benchmarks pane aggregates it.
+	let benchList = $state<BenchmarkRecord[]>([]);
+	let benchListLoaded = $state(false);
+	let benchSelected = $state<BenchmarkRecord | null>(null);
+	let benchShowNew = $state(false);
 	let benchRefs = $state<Experiment[]>([]);
 	let benchRef = $state('');
-	let benchRecord = $state<BenchmarkRecord | null>(null);
 	let benchLoading = $state(false);
 	let benchError = $state<string | null>(null);
+	async function loadBenchmarks() {
+		if (!id) return;
+		try {
+			benchList = (await api.listExperimentBenchmarks(id)).benchmarks ?? [];
+			benchSelected = benchList[0] ?? null;
+		} catch {
+			benchList = [];
+		} finally {
+			benchListLoaded = true;
+		}
+	}
 	async function loadBenchRefs() {
 		if (benchRefs.length) return;
 		try {
 			const body = await api.listExperiments();
+			// The OTHER side of a new comparison: this run is implicitly the
+			// observation, so the choice here is only its baseline.
 			benchRefs = (body.experiments ?? []).filter(
 				(e) => e.status === 'completed' && e.experiment_id !== id
 			);
@@ -92,15 +108,21 @@
 		benchError = null;
 		try {
 			const refExp = benchRefs.find((e) => e.experiment_id === benchRef);
-			benchRecord = await api.benchmarkExperiment(
+			const record = await api.benchmarkExperiment(
 				id,
 				benchRef,
 				experiment?.tenant_experiment_label ?? undefined,
 				refExp?.tenant_experiment_label ?? undefined
 			);
+			benchShowNew = false;
+			benchRef = '';
+			await loadBenchmarks();
+			benchSelected =
+				benchList.find(
+					(b) => b.reference.experiment_id === record.reference.experiment_id
+				) ?? record;
 		} catch (e) {
 			benchError = e instanceof Error ? e.message : String(e);
-			benchRecord = null;
 		} finally {
 			benchLoading = false;
 		}
@@ -539,7 +561,7 @@
 		<button class="tab" class:active={tab === 'progress'} onclick={() => (tab = 'progress')}>Progress</button>
 		<button class="tab" class:active={tab === 'evidence'} onclick={() => (tab = 'evidence')}>Evidence</button>
 		<button class="tab" class:active={tab === 'export'} onclick={() => (tab = 'export')}>Export</button>
-		<button class="tab" class:active={tab === 'benchmark'} onclick={() => { tab = 'benchmark'; loadBenchRefs(); }}>Benchmark</button>
+		<button class="tab" class:active={tab === 'benchmark'} onclick={() => { tab = 'benchmark'; loadBenchmarks(); }}>Benchmark</button>
 	</nav>
 
 	{#if tab === 'progress'}
@@ -1107,64 +1129,95 @@
 	{#if tab === 'benchmark'}
 	<h2>Drift Benchmark</h2>
 	<p class="muted small">
-		One comparable measurement: each declared feature's shift ÷ its calibrated tolerance
-		(envelope units — 1.0 is the boundary between noise and drift). Scored over two
-		custody-verified bundles; the reference experiment's signed manifest defines the
-		envelope, and a published number always names its reference. Byte-level and
-		within-run divergence are reported separately — never folded into the score.
+		This experiment's drift scores, in envelope units (each declared feature's shift ÷ its
+		calibrated tolerance; 1.0 = the boundary between noise and drift). Each score is
+		<em>against</em> a named reference experiment, whose signed manifest defines the envelope.
+		Byte-level and within-run divergence are reported separately — never folded into the score.
 	</p>
-	<div class="bench-controls">
-		<label>
-			reference
-			<select bind:value={benchRef}>
-				<option value="" disabled>choose a completed experiment…</option>
-				{#each benchRefs as e (e.experiment_id)}
-					<option value={e.experiment_id}>{e.tenant_experiment_label ?? e.experiment_id}</option>
+
+	{#if !benchListLoaded}
+		<p class="muted">Loading…</p>
+	{:else if !benchList.length}
+		<p class="muted">No benchmarks yet for this experiment.</p>
+	{:else}
+		{#if benchList.length > 1}
+			<div class="bench-list">
+				{#each benchList as b (b.path ?? b.reference.experiment_id)}
+					<button
+						class="bench-item"
+						class:selected={benchSelected === b}
+						onclick={() => (benchSelected = b)}
+					>
+						vs {b.reference.label ?? b.reference.experiment_id}
+						<span class="mono">{b.report.peak_eu != null ? `${b.report.peak_eu.toFixed(2)} EU` : 'n/a'}</span>
+					</button>
 				{/each}
-			</select>
-		</label>
-		<button class="primary" onclick={runBenchmark} disabled={!benchRef || benchLoading}>
-			{benchLoading ? 'Scoring…' : 'Run benchmark'}
-		</button>
-	</div>
-	{#if benchError}<p class="warn-text">{benchError}</p>{/if}
-	{#if benchRecord}
-		{@const rep = benchRecord.report}
-		<div class="bench-headline">
-			<span class="bench-peak">{rep.peak_eu != null ? `${rep.peak_eu.toFixed(2)} EU` : 'n/a'}</span>
-			<span class="muted">peak drift</span>
-			{#if rep.breadth != null}<span>· {(rep.breadth * 100).toFixed(0)}% of probes beyond envelope</span>{/if}
-			{#if rep.byte_divergence_rate != null}<span class="muted">· byte-divergence {(rep.byte_divergence_rate * 100).toFixed(0)}% (separate overlay)</span>{/if}
-		</div>
-		{#if rep.diverged_units_total}
-			<p class="warn-text">
-				⚠ within-run divergence (signed evidence, not scorable): {rep.diverged_units_total} unit(s)
-				{#if rep.diverged_by_key}— {Object.entries(rep.diverged_by_key).map(([k, n]) => `${k}: ${n}`).join(' · ')}{/if}
+			</div>
+		{/if}
+		{#if benchSelected}
+			{@const rep = benchSelected.report}
+			<div class="bench-headline">
+				<span class="bench-peak">{rep.peak_eu != null ? `${rep.peak_eu.toFixed(2)} EU` : 'n/a'}</span>
+				<span class="muted">peak drift vs</span>
+				<span class="mono">{benchSelected.reference.label ?? benchSelected.reference.experiment_id}</span>
+				{#if rep.breadth != null}<span>· {(rep.breadth * 100).toFixed(0)}% of probes beyond envelope</span>{/if}
+				{#if rep.byte_divergence_rate != null}<span class="muted">· byte-divergence {(rep.byte_divergence_rate * 100).toFixed(0)}% (separate overlay)</span>{/if}
+			</div>
+			{#if rep.diverged_units_total}
+				<p class="warn-text">
+					⚠ within-run divergence (signed evidence, not scorable): {rep.diverged_units_total} unit(s)
+					{#if rep.diverged_by_key}— {Object.entries(rep.diverged_by_key).map(([k, n]) => `${k}: ${n}`).join(' · ')}{/if}
+				</p>
+			{/if}
+			<table class="bench-table">
+				<thead><tr><th>probe</th><th>peak</th><th>features (median EU)</th><th>byte-div</th></tr></thead>
+				<tbody>
+					{#each rep.probes as pr (pr.key)}
+						<tr>
+							<td>{pr.key}{#if pr.beyond_envelope} <span class="beyond">beyond envelope</span>{/if}</td>
+							<td class="mono">{pr.peak_eu != null ? pr.peak_eu.toFixed(2) : 'n/a'}</td>
+							<td class="muted small">
+								{pr.features
+									.filter((f) => f.eu != null)
+									.map((f) => `${f.feature} ${f.eu?.toFixed(2)}`)
+									.join(' · ') || '—'}
+							</td>
+							<td class="muted">{pr.byte_divergence_rate != null ? `${(pr.byte_divergence_rate * 100).toFixed(0)}%` : '—'}</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			{#each rep.notes as n (n)}<p class="muted small">note: {n}</p>{/each}
+			<p class="muted small">
+				computed {benchSelected.computed_at?.slice(0, 16).replace('T', ' ')} · all runs aggregate on
+				<a href="/benchmarks">Benchmarks</a>
 			</p>
 		{/if}
-		<table class="bench-table">
-			<thead><tr><th>probe</th><th>peak</th><th>features (median EU)</th><th>byte-div</th></tr></thead>
-			<tbody>
-				{#each rep.probes as pr (pr.key)}
-					<tr>
-						<td>{pr.key}{#if pr.beyond_envelope} <span class="beyond">beyond envelope</span>{/if}</td>
-						<td class="mono">{pr.peak_eu != null ? pr.peak_eu.toFixed(2) : 'n/a'}</td>
-						<td class="muted small">
-							{pr.features
-								.filter((f) => f.eu != null)
-								.map((f) => `${f.feature} ${f.eu?.toFixed(2)}`)
-								.join(' · ') || '—'}
-						</td>
-						<td class="muted">{pr.byte_divergence_rate != null ? `${(pr.byte_divergence_rate * 100).toFixed(0)}%` : '—'}</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-		{#each rep.notes as n (n)}<p class="muted small">note: {n}</p>{/each}
-		<p class="muted small">
-			reference: <span class="mono">{benchRecord.reference.label ?? benchRecord.reference.experiment_id}</span>
-			{#if benchRecord.saved_path}· saved: <span class="mono">{benchRecord.saved_path}</span> · aggregated on <a href="/benchmarks">Benchmarks</a>{/if}
-		</p>
+	{/if}
+
+	{#if benchError}<p class="warn-text">{benchError}</p>{/if}
+	{#if benchListLoaded}
+		{#if !benchShowNew}
+			<button class="secondary" onclick={() => { benchShowNew = true; loadBenchRefs(); }}>
+				New comparison…
+			</button>
+		{:else}
+			<div class="bench-controls">
+				<label>
+					score this experiment against
+					<select bind:value={benchRef}>
+						<option value="" disabled>choose a reference (defines the envelope)…</option>
+						{#each benchRefs as e (e.experiment_id)}
+							<option value={e.experiment_id}>{e.tenant_experiment_label ?? e.experiment_id}</option>
+						{/each}
+					</select>
+				</label>
+				<button class="primary" onclick={runBenchmark} disabled={!benchRef || benchLoading}>
+					{benchLoading ? 'Scoring…' : 'Run'}
+				</button>
+				<button class="secondary" onclick={() => (benchShowNew = false)}>Cancel</button>
+			</div>
+		{/if}
 	{/if}
 	{/if}
 
@@ -1206,6 +1259,27 @@
 
 <style>
 	/* Drift Benchmark panel (D16.4): neutral facts; the score is data, not alarm. */
+	.bench-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0.5rem 0 0.9rem;
+	}
+	.bench-item {
+		display: inline-flex;
+		gap: 0.5rem;
+		align-items: baseline;
+		padding: 0.3rem 0.7rem;
+		border: 1px solid var(--border, #d9d8d4);
+		border-radius: 6px;
+		background: transparent;
+		cursor: pointer;
+		font-size: 0.88rem;
+	}
+	.bench-item.selected {
+		border-color: var(--ink, #0b0b0b);
+		font-weight: 600;
+	}
 	.bench-controls {
 		display: flex;
 		align-items: flex-end;

@@ -355,6 +355,7 @@ export interface BenchmarkReport {
 }
 export interface BenchmarkRecord {
 	schema: string;
+	path?: string;
 	computed_at: string;
 	observation: { experiment_id: string; label?: string | null };
 	reference: { experiment_id: string; label?: string | null };
@@ -645,6 +646,12 @@ export const api = {
 				(referenceLabel ? `&reference_label=${encodeURIComponent(referenceLabel)}` : '')
 		),
 	listBenchmarks: () => getJson<{ benchmarks: BenchmarkSummary[] }>('/api/v0/benchmarks'),
+	// THIS experiment's saved benchmark reports (full records) — the tab's
+	// primary content; computing a new comparison is the secondary act.
+	listExperimentBenchmarks: (id: string) =>
+		getJson<{ benchmarks: BenchmarkRecord[] }>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/benchmarks`
+		),
 	exportResults: (id: string, label?: string) =>
 		getJson<ExportResponse>(
 			`/api/v0/experiments/${encodeURIComponent(id)}/results/export` +

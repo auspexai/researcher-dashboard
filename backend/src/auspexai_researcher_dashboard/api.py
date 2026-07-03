@@ -49,6 +49,26 @@ def _save_bundle(cfg, key: str, bundle: dict[str, Any]) -> str | None:
         return None
 
 
+def _scan_benchmark_records(base: Path) -> list[dict[str, Any]]:
+    """Every saved drift-benchmark record under runs/ (full records, with their
+    path), newest first. Garbage-tolerant: an unreadable file is skipped."""
+    records: list[dict[str, Any]] = []
+    try:
+        candidates = sorted(base.glob("*/benchmark_vs_*.json"))
+    except OSError:
+        candidates = []
+    for path in candidates:
+        try:
+            rec = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(rec, dict):
+            rec["path"] = str(path)
+            records.append(rec)
+    records.sort(key=lambda r: r.get("computed_at") or "", reverse=True)
+    return records
+
+
 def _rekor_status(bundle: dict[str, Any]) -> dict[str, Any]:
     """The attestation's transparency-log anchor, read straight from the bundle —
     `pending` until the coordinator's hourly Rekor sweep anchors it, so a fresh
@@ -329,6 +349,20 @@ def build_api_router() -> APIRouter:
             content={"bundle": bundle, "verification": verification, "saved_path": saved_path}
         )
 
+    @router.get("/experiments/{experiment_id}/benchmarks")
+    async def list_experiment_benchmarks(request: Request, experiment_id: str) -> JSONResponse:
+        """THIS experiment's saved drift-benchmark reports (it as the
+        observation), newest first, full records — the Benchmark tab's primary
+        content. Computing a NEW comparison is the secondary act; viewing what
+        this run has already been scored against is the default."""
+        base = _runs_base(request.app.state.config)
+        records = [
+            r
+            for r in _scan_benchmark_records(base)
+            if (r.get("observation") or {}).get("experiment_id") == experiment_id
+        ]
+        return JSONResponse(content={"benchmarks": records})
+
     @router.get("/experiments/{experiment_id}/benchmark")
     async def benchmark_experiment(
         request: Request,
@@ -407,30 +441,21 @@ def build_api_router() -> APIRouter:
         traceable to its signed evidence."""
         base = _runs_base(request.app.state.config)
         rows: list[dict[str, Any]] = []
-        try:
-            candidates = sorted(base.glob("*/benchmark_vs_*.json"))
-        except OSError:
-            candidates = []
-        for path in candidates:
-            try:
-                rec = json.loads(path.read_text())
-                rep = rec.get("report") or {}
-                rows.append(
-                    {
-                        "computed_at": rec.get("computed_at"),
-                        "observation": rec.get("observation"),
-                        "reference": rec.get("reference"),
-                        "peak_eu": rep.get("peak_eu"),
-                        "breadth": rep.get("breadth"),
-                        "byte_divergence_rate": rep.get("byte_divergence_rate"),
-                        "diverged_units_total": rep.get("diverged_units_total"),
-                        "probes": len(rep.get("probes") or []),
-                        "path": str(path),
-                    }
-                )
-            except (OSError, ValueError):
-                continue
-        rows.sort(key=lambda r: r.get("computed_at") or "", reverse=True)
+        for rec in _scan_benchmark_records(base):
+            rep = rec.get("report") or {}
+            rows.append(
+                {
+                    "computed_at": rec.get("computed_at"),
+                    "observation": rec.get("observation"),
+                    "reference": rec.get("reference"),
+                    "peak_eu": rep.get("peak_eu"),
+                    "breadth": rep.get("breadth"),
+                    "byte_divergence_rate": rep.get("byte_divergence_rate"),
+                    "diverged_units_total": rep.get("diverged_units_total"),
+                    "probes": len(rep.get("probes") or []),
+                    "path": rec.get("path"),
+                }
+            )
         return JSONResponse(content={"benchmarks": rows})
 
     @router.get("/experiments/{experiment_id}/attestation")

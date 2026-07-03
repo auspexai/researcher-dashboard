@@ -78,3 +78,19 @@ def test_benchmark_endpoint_refuses_unreachable_coordinator(tmp_path: Path) -> N
     client = TestClient(create_app(_config(tmp_path)))
     r = client.get("/api/v0/experiments/exp-a/benchmark?reference=exp-b")
     assert r.status_code >= 400
+
+
+def test_experiment_benchmarks_lists_only_its_own(tmp_path: Path) -> None:
+    # The tab's primary content: THIS experiment's saved reports — not a picker.
+    _saved_report(tmp_path, "run-a", "exp-ref", 6.67, "2026-07-03T10:00:00+00:00")
+    _saved_report(tmp_path, "run-a", "exp-ref2", 1.1, "2026-07-03T11:00:00+00:00")
+    _saved_report(tmp_path, "run-b", "exp-ref", 0.0, "2026-07-03T12:00:00+00:00")
+    client = TestClient(create_app(_config(tmp_path)))
+    r = client.get("/api/v0/experiments/exp-run-a/benchmarks")
+    assert r.status_code == 200
+    rows = r.json()["benchmarks"]
+    assert len(rows) == 2
+    assert all(row["observation"]["experiment_id"] == "exp-run-a" for row in rows)
+    # Newest first; the full report rides along (no second fetch to expand).
+    assert rows[0]["reference"]["experiment_id"] == "exp-ref2"
+    assert rows[0]["report"]["peak_eu"] == 1.1
