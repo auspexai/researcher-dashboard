@@ -86,6 +86,17 @@
 		from the signed manifest, what every <code>output.*</code> column means (no pandas needed). For a
 		frame: <code>load_verified(bundle)</code> or <code>bundle table -o results.csv</code>.
 	</p>
+	<p>
+		<strong>Drift Benchmark.</strong> Declare a baseline once in your config
+		(<code>[benchmark] reference = "&lt;experiment&gt;"</code>) and every launch scores the
+		finished run against it automatically, in envelope units (1.0&nbsp;EU = the calibrated
+		noise floor; headline = peak + breadth). The score appears on the run's
+		<em>Benchmark</em> tab, the baseline's page shows its full track over time, and the
+		<em>Drift</em> column on <a href="/experiments">My Experiments</a> gives the sweep.
+		<code>auspexai-tenant benchmark publish &lt;run&gt;</code> submits a signed,
+		self-grounding entry to the public board — admitted by verification, not by an editor.
+		One-off comparisons: <code>auspexai-tenant benchmark drift</code>.
+	</p>
 </section>
 
 <section>
