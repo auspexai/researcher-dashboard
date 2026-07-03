@@ -228,12 +228,24 @@
 						>
 					</p>
 				{/if}
-				{#if !whoami.orcid_id}
+				{#if !whoami.orcid_id || whoami.identity_verified === false}
+					<!-- E11 D3 (2026-07-03): also offered when an iD is LINKED but the
+					     verification stamp is absent (e.g. after an admin action) — the
+					     re-link flow re-stamps verification; previously there was no UI
+					     path back once an iD was stored. -->
 					<div class="orcid-link">
 						<button class="orcid-btn" onclick={linkOrcid} disabled={orcidLinking}>
-							{orcidLinking ? 'Opening ORCID…' : 'Link ORCID'}
+							{orcidLinking
+								? 'Opening ORCID…'
+								: whoami.orcid_id
+									? 'Re-verify ORCID'
+									: 'Link ORCID'}
 						</button>
-						<span class="muted small">verifies your researcher identity (for R3)</span>
+						<span class="muted small">
+							{whoami.orcid_id
+								? 'your ORCID is linked but not currently verified — re-verify to restore it'
+								: 'verifies your researcher identity (for R3)'}
+						</span>
 					</div>
 				{/if}
 				{#if orcidNote}<p class="ok small">{orcidNote}</p>{/if}

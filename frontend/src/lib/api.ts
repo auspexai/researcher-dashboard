@@ -403,6 +403,9 @@ export interface WhoAmI {
 	research_standing_eligible_for_r2?: boolean;
 	// D8: the linked ORCID iD (e.g. "0000-0002-1825-0097"), if any. Account-scoped.
 	orcid_id?: string | null;
+	// E11 D3a: whether identity verification is currently STAMPED (distinct from
+	// "an iD is linked") — drives the Link vs Re-verify ORCID affordance.
+	identity_verified?: boolean | null;
 	// The account-identity root, account-scoped: `display_name` is the verified
 	// handle (the GitHub login for a github root); `idp` is the provider. Lets the
 	// Identity card render the GitHub identity beside ORCID.

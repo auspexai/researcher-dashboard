@@ -109,11 +109,24 @@
 	type TolEvidence = NonNullable<ResultItem['consensus_evidence']>;
 	function tolSummary(ev: TolEvidence): string {
 		const n = ev.agreeing_workers ?? 0;
+		// C17 observe-only: no agreement is claimed — each replica is an
+		// independent observation, by design (never a fault to interpret).
+		if (ev.method === 'builtin_process_only') {
+			return `${n} independent observation${n === 1 ? '' : 's'} · observe-only (no agreement claimed — by design)`;
+		}
 		const o = ev.outlier_count ?? 0;
 		const agreed = `${n} worker${n === 1 ? '' : 's'} agreed within tolerance`;
 		return o > 0 ? `${agreed} · ${o} outlier${o === 1 ? '' : 's'} recorded` : agreed;
 	}
 	function tolDetail(ev: TolEvidence): string {
+		if (ev.method === 'builtin_process_only') {
+			return (
+				'Observe-only collection: every replica is an independent, valid observation — ' +
+				'no cross-worker agreement is claimed, so differing outputs are the design, not ' +
+				'a fault. The attestation binds a deterministic representative hash (not a ' +
+				'consensus value); every observation is anchored in the signed receipts.'
+			);
+		}
 		const lines: string[] = [
 			'Replicas agreed within the declared tolerance envelope; the consensus value is the ' +
 				'deterministic representative (its hash is what the attestation binds). ' +
