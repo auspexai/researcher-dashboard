@@ -71,13 +71,57 @@ def test_benchmarks_pane_empty_and_garbage_tolerant(tmp_path: Path) -> None:
     assert r.json()["benchmarks"] == []
 
 
-def test_benchmark_endpoint_refuses_unreachable_coordinator(tmp_path: Path) -> None:
-    # The compute path fails LOUDLY when bundles can't be collected — never a
-    # fabricated score. (Full happy-path scoring is covered by the SDK's own
-    # bundle tests; here we pin the endpoint's error envelope.)
+def _declaration(tmp_path: Path, label: str, exp_id: str, ref: str) -> None:
+    d = tmp_path / "runs" / label
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "benchmark_reference.json").write_text(
+        json.dumps(
+            {
+                "schema": "auspexai-benchmark-declaration/v0",
+                "mode": "fixed_reference",
+                "experiment_id": exp_id,
+                "label": label,
+                "reference_experiment_id": ref,
+            }
+        )
+    )
+
+
+def test_declared_but_uncollectable_reports_why_not_a_score(tmp_path: Path) -> None:
+    # A declared reference with an unreachable coordinator: the endpoint says
+    # WHY it could not materialize — never a fabricated score, never a 500.
+    _declaration(tmp_path, "run-a", "exp-run-a", "exp-baseline")
     client = TestClient(create_app(_config(tmp_path)))
-    r = client.get("/api/v0/experiments/exp-a/benchmark?reference=exp-b")
-    assert r.status_code >= 400
+    r = client.get("/api/v0/experiments/exp-run-a/benchmarks")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["benchmarks"] == []
+    assert body["declaration"]["reference_experiment_id"] == "exp-baseline"
+    assert "could not collect" in (body["materialize_error"] or "")
+
+
+def test_saved_score_needs_no_recompute_and_no_declaration(tmp_path: Path) -> None:
+    _saved_report(tmp_path, "run-a", "exp-ref", 6.67, "2026-07-03T10:00:00+00:00")
+    client = TestClient(create_app(_config(tmp_path)))
+    r = client.get("/api/v0/experiments/exp-run-a/benchmarks")
+    body = r.json()
+    assert body["benchmarks"][0]["report"]["peak_eu"] == 6.67
+    assert body["declaration"] is None
+    assert body["materialize_error"] is None
+
+
+def test_baseline_sees_its_track(tmp_path: Path) -> None:
+    # The flip side: the reference experiment's page shows the runs scored
+    # against it — the drift series (the shape the public board publishes).
+    _saved_report(tmp_path, "run-a", "exp-baseline", 6.67, "2026-07-03T10:00:00+00:00")
+    _saved_report(tmp_path, "run-b", "exp-baseline", 0.0, "2026-07-03T12:00:00+00:00")
+    client = TestClient(create_app(_config(tmp_path)))
+    r = client.get("/api/v0/experiments/exp-baseline/benchmarks")
+    body = r.json()
+    assert body["benchmarks"] == []  # the baseline itself scores against nothing
+    track = body["track"]
+    assert [row["observation"]["experiment_id"] for row in track] == ["exp-run-b", "exp-run-a"]
+    assert track[1]["peak_eu"] == 6.67
 
 
 def test_experiment_benchmarks_lists_only_its_own(tmp_path: Path) -> None:

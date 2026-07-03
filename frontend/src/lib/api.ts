@@ -362,6 +362,29 @@ export interface BenchmarkRecord {
 	report: BenchmarkReport;
 	saved_path?: string | null;
 }
+export interface BenchmarkDeclaration {
+	schema?: string;
+	mode?: string;
+	experiment_id?: string;
+	label?: string;
+	reference_experiment_id?: string;
+	declared_at?: string;
+	source?: string;
+}
+export interface BenchmarkTrackRow {
+	computed_at?: string;
+	observation?: { experiment_id?: string; label?: string | null };
+	peak_eu?: number | null;
+	breadth?: number | null;
+	byte_divergence_rate?: number | null;
+	diverged_units_total?: number | null;
+}
+export interface ExperimentBenchmarks {
+	benchmarks: BenchmarkRecord[];
+	declaration: BenchmarkDeclaration | null;
+	track: BenchmarkTrackRow[];
+	materialize_error: string | null;
+}
 export interface BenchmarkSummary {
 	computed_at?: string;
 	observation?: { experiment_id?: string; label?: string | null };
@@ -637,20 +660,15 @@ export const api = {
 	// researcher. A `conflict` ApiError here is the verify-on-export tamper
 	// alarm — the coordinator refused to sign custody over a set that fails
 	// verification.
-	// The Drift Benchmark (D16.4): score this experiment against a reference in
-	// envelope units — computed server-side over two custody-verified bundles.
-	benchmarkExperiment: (id: string, reference: string, label?: string, referenceLabel?: string) =>
-		getJson<BenchmarkRecord>(
-			`/api/v0/experiments/${encodeURIComponent(id)}/benchmark?reference=${encodeURIComponent(reference)}` +
-				(label ? `&label=${encodeURIComponent(label)}` : '') +
-				(referenceLabel ? `&reference_label=${encodeURIComponent(referenceLabel)}` : '')
-		),
+	// The Drift Benchmark (D16.4), auto-materialized: the reference was declared
+	// at launch, so a completed run's score simply exists (computed server-side
+	// on first view). `track` is the flip side — runs scored against THIS run.
+	// Ad-hoc comparisons are a CLI capability, deliberately not a dashboard one.
 	listBenchmarks: () => getJson<{ benchmarks: BenchmarkSummary[] }>('/api/v0/benchmarks'),
-	// THIS experiment's saved benchmark reports (full records) — the tab's
-	// primary content; computing a new comparison is the secondary act.
-	listExperimentBenchmarks: (id: string) =>
-		getJson<{ benchmarks: BenchmarkRecord[] }>(
-			`/api/v0/experiments/${encodeURIComponent(id)}/benchmarks`
+	experimentBenchmarks: (id: string, label?: string) =>
+		getJson<ExperimentBenchmarks>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/benchmarks` +
+				(label ? `?label=${encodeURIComponent(label)}` : '')
 		),
 	exportResults: (id: string, label?: string) =>
 		getJson<ExportResponse>(

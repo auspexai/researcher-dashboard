@@ -7,6 +7,9 @@
 
 	let experiments = $state<Experiment[] | null>(null);
 	let error = $state<ApiError | null>(null);
+	// Each run's drift score vs its declared reference (saved reports; a run
+	// scored against several references shows its declared/most recent one).
+	let benchByExp = $state<Record<string, number | null>>({});
 
 	const fmt = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
 
@@ -19,6 +22,16 @@
 			);
 		} catch (e) {
 			error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+		}
+		try {
+			const map: Record<string, number | null> = {};
+			for (const b of (await api.listBenchmarks()).benchmarks) {
+				const id = b.observation?.experiment_id;
+				if (id && !(id in map)) map[id] = b.peak_eu ?? null; // newest-first wins
+			}
+			benchByExp = map;
+		} catch {
+			/* the column just stays empty — benchmarks are supplementary here */
 		}
 	});
 </script>
@@ -47,6 +60,7 @@
 			<tr>
 				<th>Experiment</th>
 				<th>Status</th>
+				<th>Drift</th>
 				<th>Submitted</th>
 				<th>Submissions</th>
 			</tr>
@@ -64,6 +78,13 @@
 						<span class="id">{exp.experiment_id}</span>
 					</td>
 					<td><StatusBadge status={exp.status} phase={exp.run_phase} /></td>
+					<td class="mono" title="peak drift vs the run's declared reference, in envelope units">
+						{benchByExp[exp.experiment_id] != null
+							? `${benchByExp[exp.experiment_id]?.toFixed(2)} EU`
+							: exp.experiment_id in benchByExp
+								? 'n/a'
+								: '—'}
+					</td>
 					<td class="muted">{fmt(exp.submitted_at)}</td>
 					<td class="muted">{exp.submissions_finalized ? 'finalized' : 'open'}</td>
 				</tr>

@@ -69,6 +69,23 @@ def _scan_benchmark_records(base: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _find_benchmark_declaration(base: Path, experiment_id: str) -> dict[str, Any] | None:
+    """The run's benchmark declaration (written at launch beside the run) —
+    runs/*/benchmark_reference.json with a matching experiment_id."""
+    try:
+        candidates = sorted(base.glob("*/benchmark_reference.json"))
+    except OSError:
+        return None
+    for path in candidates:
+        try:
+            rec = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(rec, dict) and rec.get("experiment_id") == experiment_id:
+            return rec
+    return None
+
+
 def _rekor_status(bundle: dict[str, Any]) -> dict[str, Any]:
     """The attestation's transparency-log anchor, read straight from the bundle —
     `pending` until the coordinator's hourly Rekor sweep anchors it, so a fresh
@@ -349,37 +366,15 @@ def build_api_router() -> APIRouter:
             content={"bundle": bundle, "verification": verification, "saved_path": saved_path}
         )
 
-    @router.get("/experiments/{experiment_id}/benchmarks")
-    async def list_experiment_benchmarks(request: Request, experiment_id: str) -> JSONResponse:
-        """THIS experiment's saved drift-benchmark reports (it as the
-        observation), newest first, full records — the Benchmark tab's primary
-        content. Computing a NEW comparison is the secondary act; viewing what
-        this run has already been scored against is the default."""
-        base = _runs_base(request.app.state.config)
-        records = [
-            r
-            for r in _scan_benchmark_records(base)
-            if (r.get("observation") or {}).get("experiment_id") == experiment_id
-        ]
-        return JSONResponse(content={"benchmarks": records})
-
-    @router.get("/experiments/{experiment_id}/benchmark")
-    async def benchmark_experiment(
+    async def _compute_benchmark(
         request: Request,
         experiment_id: str,
         reference: str,
-        label: str | None = None,
-        reference_label: str | None = None,
-    ) -> JSONResponse:
-        """The Drift Benchmark, embedded per run (the ratified standard): score
-        THIS experiment's custody-verified bundle against a REFERENCE
-        experiment's bundle in envelope units. Both bundles are collected fresh
-        and verified locally first — an unverifiable side refuses to score
-        (same posture as the CLI). The scored report persists beside the run
-        (runs/<label>/benchmark_vs_<reference>.json), so the dashboard and CLI
-        organize benchmark artifacts identically and the /benchmarks pane
-        aggregates them. The reference bundle's SIGNED manifest defines the
-        envelope; published numbers always name their reference (ratified Q3)."""
+        label: str | None,
+        reference_label: str | None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Collect + verify both bundles, score, persist beside the run.
+        Returns (record, None) or (None, why-it-could-not-score)."""
         from datetime import UTC, datetime
 
         from auspexai_tenant.benchmark import drift_benchmark_bundles
@@ -389,7 +384,7 @@ def build_api_router() -> APIRouter:
             bundle = await client.get_json(f"/api/v0/experiments/{experiment_id}/results/export")
             ref_bundle = await client.get_json(f"/api/v0/experiments/{reference}/results/export")
         except CoordinatorError as e:
-            return _envelope(e)
+            return None, f"could not collect the evidence bundles: {e}"
         for side, blob in (("observation", bundle), ("reference", ref_bundle)):
             try:
                 v = await run_in_threadpool(verify_bundle, blob)
@@ -397,18 +392,12 @@ def build_api_router() -> APIRouter:
             except Exception:
                 ok = False
             if not ok:
-                return JSONResponse(
-                    status_code=409,
-                    content={
-                        "error": {
-                            "code": "benchmark_input_unverified",
-                            "message": f"the {side} bundle failed verification — "
-                            "the benchmark scores only custody-verified evidence",
-                        }
-                    },
+                return None, (
+                    f"the {side} bundle failed verification — the benchmark scores "
+                    "only custody-verified evidence"
                 )
         report = await run_in_threadpool(drift_benchmark_bundles, bundle, ref_bundle)
-        record = {
+        record: dict[str, Any] = {
             "schema": "auspexai-drift-benchmark-report/v0",
             "computed_at": datetime.now(UTC).isoformat(),
             "observation": {
@@ -421,24 +410,80 @@ def build_api_router() -> APIRouter:
             },
             "report": report.to_dict(),
         }
-        saved_path: str | None = None
         try:
             layout = RunLayout(label or experiment_id, base=_runs_base(request.app.state.config))
             layout.ensure()
             path = layout.bundle_path().parent / f"benchmark_vs_{reference}.json"
             path.write_text(json.dumps(record, indent=2))
-            saved_path = str(path)
+            record["path"] = str(path)
         except (OSError, ValueError):
-            saved_path = None
-        return JSONResponse(content={**record, "saved_path": saved_path})
+            pass
+        return record, None
+
+    @router.get("/experiments/{experiment_id}/benchmarks")
+    async def experiment_benchmarks(
+        request: Request, experiment_id: str, label: str | None = None
+    ) -> JSONResponse:
+        """This run's Drift Benchmark, AUTO-MATERIALIZED (no choosing): the
+        reference was declared at launch ([benchmark].reference, recorded beside
+        the run — the pre-registration posture), so a completed run's score
+        simply exists. Returns:
+        - benchmarks: this run's saved reports (newest first) — computed here on
+          first view when the declaration exists and no report does yet;
+        - declaration: the run's declared reference, if any;
+        - track: the flip side — runs scored AGAINST this run (this run as the
+          baseline), the drift series the eventual public board publishes;
+        - materialize_error: why the declared score could not be computed (kept
+          out of `benchmarks` — never a fabricated score).
+        Ad-hoc scoring against an arbitrary reference is a CLI capability
+        (`auspexai-tenant benchmark drift`), deliberately not a dashboard one."""
+        base = _runs_base(request.app.state.config)
+        records = _scan_benchmark_records(base)
+        mine = [
+            r for r in records if (r.get("observation") or {}).get("experiment_id") == experiment_id
+        ]
+        declaration = _find_benchmark_declaration(base, experiment_id)
+        materialize_error: str | None = None
+        if declaration and not any(
+            (r.get("reference") or {}).get("experiment_id")
+            == declaration.get("reference_experiment_id")
+            for r in mine
+        ):
+            record, materialize_error = await _compute_benchmark(
+                request,
+                experiment_id,
+                str(declaration.get("reference_experiment_id")),
+                label or declaration.get("label"),
+                None,
+            )
+            if record is not None:
+                mine = [record, *mine]
+        track = [
+            {
+                "computed_at": r.get("computed_at"),
+                "observation": r.get("observation"),
+                "peak_eu": (r.get("report") or {}).get("peak_eu"),
+                "breadth": (r.get("report") or {}).get("breadth"),
+                "byte_divergence_rate": (r.get("report") or {}).get("byte_divergence_rate"),
+                "diverged_units_total": (r.get("report") or {}).get("diverged_units_total"),
+            }
+            for r in records
+            if (r.get("reference") or {}).get("experiment_id") == experiment_id
+        ]
+        return JSONResponse(
+            content={
+                "benchmarks": mine,
+                "declaration": declaration,
+                "track": track,
+                "materialize_error": materialize_error,
+            }
+        )
 
     @router.get("/benchmarks")
     async def list_benchmarks(request: Request) -> JSONResponse:
-        """The one-pane-of-glass aggregation: every drift-benchmark report saved
-        under runs/ (dashboard-computed or CLI-saved to the same layout), newest
-        first. The internal precursor of the eventual public benchmark board —
-        entries carry the observation + reference ids so every number remains
-        traceable to its signed evidence."""
+        """Summary rows for every saved drift-benchmark report, newest first —
+        the data source for the experiments list's benchmark column (and, later,
+        the G5 publisher). Not a navigation surface of its own."""
         base = _runs_base(request.app.state.config)
         rows: list[dict[str, Any]] = []
         for rec in _scan_benchmark_records(base):
