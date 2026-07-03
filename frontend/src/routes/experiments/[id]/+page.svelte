@@ -687,6 +687,23 @@
 								>{/if}
 						</span>
 					</div>
+					{#if fp.generation}
+						<div class="field">
+							<span
+								class="k"
+								title="The generation policy the signed manifest declared. greedy = byte-deterministic decoding (replicas should match). seeded sampling = declared temperature with a pinned seed (replicas legitimately differ — each is an independent sample, so read divergence as the design, not a fault)."
+								>Generation policy</span
+							>
+							<span class="v">
+								{fp.generation.mode === 'seeded_sampling' ? 'seeded sampling' : (fp.generation.mode ?? '—')}
+								{#if fp.generation.params}
+									· {Object.entries(fp.generation.params)
+										.map(([k, v]) => `${k}=${v}`)
+										.join(' · ')}
+								{/if}
+							</span>
+						</div>
+					{/if}
 					<div class="field">
 						<span
 							class="k"

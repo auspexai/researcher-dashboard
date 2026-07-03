@@ -312,6 +312,14 @@ export interface GovernanceFootprint {
 	// §41 / A2: the containment the apparatus REQUIRED vs the sandbox policies the
 	// consensus workers actually RAN UNDER — so a researcher can stratify by it.
 	containment?: { required?: string; ran_under?: string[] };
+	// v0.2 M1: the manifest-declared generation policy — greedy (byte-deterministic
+	// decoding) vs seeded_sampling (declared temperature + pinned seed + whitelist
+	// knobs). Divergence is interpretable only in kind: sampled replicas
+	// legitimately differ; greedy replicas should not.
+	generation?: {
+		mode?: string; // 'greedy' | 'seeded_sampling'
+		params?: Record<string, number | string>;
+	};
 }
 
 export interface VerificationCheck {
