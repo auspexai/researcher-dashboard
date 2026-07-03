@@ -329,6 +329,110 @@ def build_api_router() -> APIRouter:
             content={"bundle": bundle, "verification": verification, "saved_path": saved_path}
         )
 
+    @router.get("/experiments/{experiment_id}/benchmark")
+    async def benchmark_experiment(
+        request: Request,
+        experiment_id: str,
+        reference: str,
+        label: str | None = None,
+        reference_label: str | None = None,
+    ) -> JSONResponse:
+        """The Drift Benchmark, embedded per run (the ratified standard): score
+        THIS experiment's custody-verified bundle against a REFERENCE
+        experiment's bundle in envelope units. Both bundles are collected fresh
+        and verified locally first — an unverifiable side refuses to score
+        (same posture as the CLI). The scored report persists beside the run
+        (runs/<label>/benchmark_vs_<reference>.json), so the dashboard and CLI
+        organize benchmark artifacts identically and the /benchmarks pane
+        aggregates them. The reference bundle's SIGNED manifest defines the
+        envelope; published numbers always name their reference (ratified Q3)."""
+        from datetime import UTC, datetime
+
+        from auspexai_tenant.benchmark import drift_benchmark_bundles
+
+        client = _client(request)
+        try:
+            bundle = await client.get_json(f"/api/v0/experiments/{experiment_id}/results/export")
+            ref_bundle = await client.get_json(f"/api/v0/experiments/{reference}/results/export")
+        except CoordinatorError as e:
+            return _envelope(e)
+        for side, blob in (("observation", bundle), ("reference", ref_bundle)):
+            try:
+                v = await run_in_threadpool(verify_bundle, blob)
+                ok = bool(v.ok)
+            except Exception:
+                ok = False
+            if not ok:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "error": {
+                            "code": "benchmark_input_unverified",
+                            "message": f"the {side} bundle failed verification — "
+                            "the benchmark scores only custody-verified evidence",
+                        }
+                    },
+                )
+        report = await run_in_threadpool(drift_benchmark_bundles, bundle, ref_bundle)
+        record = {
+            "schema": "auspexai-drift-benchmark-report/v0",
+            "computed_at": datetime.now(UTC).isoformat(),
+            "observation": {
+                "experiment_id": experiment_id,
+                "label": label or (bundle.get("manifest") or {}).get("experiment_id"),
+            },
+            "reference": {
+                "experiment_id": reference,
+                "label": reference_label or (ref_bundle.get("manifest") or {}).get("experiment_id"),
+            },
+            "report": report.to_dict(),
+        }
+        saved_path: str | None = None
+        try:
+            layout = RunLayout(label or experiment_id, base=_runs_base(request.app.state.config))
+            layout.ensure()
+            path = layout.bundle_path().parent / f"benchmark_vs_{reference}.json"
+            path.write_text(json.dumps(record, indent=2))
+            saved_path = str(path)
+        except (OSError, ValueError):
+            saved_path = None
+        return JSONResponse(content={**record, "saved_path": saved_path})
+
+    @router.get("/benchmarks")
+    async def list_benchmarks(request: Request) -> JSONResponse:
+        """The one-pane-of-glass aggregation: every drift-benchmark report saved
+        under runs/ (dashboard-computed or CLI-saved to the same layout), newest
+        first. The internal precursor of the eventual public benchmark board —
+        entries carry the observation + reference ids so every number remains
+        traceable to its signed evidence."""
+        base = _runs_base(request.app.state.config)
+        rows: list[dict[str, Any]] = []
+        try:
+            candidates = sorted(base.glob("*/benchmark_vs_*.json"))
+        except OSError:
+            candidates = []
+        for path in candidates:
+            try:
+                rec = json.loads(path.read_text())
+                rep = rec.get("report") or {}
+                rows.append(
+                    {
+                        "computed_at": rec.get("computed_at"),
+                        "observation": rec.get("observation"),
+                        "reference": rec.get("reference"),
+                        "peak_eu": rep.get("peak_eu"),
+                        "breadth": rep.get("breadth"),
+                        "byte_divergence_rate": rep.get("byte_divergence_rate"),
+                        "diverged_units_total": rep.get("diverged_units_total"),
+                        "probes": len(rep.get("probes") or []),
+                        "path": str(path),
+                    }
+                )
+            except (OSError, ValueError):
+                continue
+        rows.sort(key=lambda r: r.get("computed_at") or "", reverse=True)
+        return JSONResponse(content={"benchmarks": rows})
+
     @router.get("/experiments/{experiment_id}/attestation")
     async def get_experiment_attestation(request: Request, experiment_id: str) -> JSONResponse:
         """The result-set attestation for one of my experiments (integrity

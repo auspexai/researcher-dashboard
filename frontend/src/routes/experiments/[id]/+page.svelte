@@ -10,8 +10,7 @@
 		type ExperimentActivity,
 		type Receipt,
 		type ResultItem,
-		type WorkUnits
-	} from '$lib/api';
+		type WorkUnits, type BenchmarkRecord } from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ActivityHeart from '$lib/components/ActivityHeart.svelte';
@@ -65,7 +64,47 @@
 	// Detail-page tabs (declutter): Progress (the live run), Evidence (integrity,
 	// receipts, citation), Export (results + bundle collect/verify). The live
 	// header — status, timeline, heart — stays above the tabs.
-	let tab = $state<'progress' | 'evidence' | 'export'>('progress');
+	let tab = $state<'progress' | 'evidence' | 'export' | 'benchmark'>('progress');
+
+	// The Drift Benchmark, embedded per run (D16.4 exposure): score THIS
+	// experiment against a chosen reference, in envelope units. Computed
+	// server-side over two custody-verified bundles; the report also persists
+	// beside the run so the /benchmarks pane aggregates it.
+	let benchRefs = $state<Experiment[]>([]);
+	let benchRef = $state('');
+	let benchRecord = $state<BenchmarkRecord | null>(null);
+	let benchLoading = $state(false);
+	let benchError = $state<string | null>(null);
+	async function loadBenchRefs() {
+		if (benchRefs.length) return;
+		try {
+			const body = await api.listExperiments();
+			benchRefs = (body.experiments ?? []).filter(
+				(e) => e.status === 'completed' && e.experiment_id !== id
+			);
+		} catch {
+			benchRefs = [];
+		}
+	}
+	async function runBenchmark() {
+		if (!benchRef || !id) return;
+		benchLoading = true;
+		benchError = null;
+		try {
+			const refExp = benchRefs.find((e) => e.experiment_id === benchRef);
+			benchRecord = await api.benchmarkExperiment(
+				id,
+				benchRef,
+				experiment?.tenant_experiment_label ?? undefined,
+				refExp?.tenant_experiment_label ?? undefined
+			);
+		} catch (e) {
+			benchError = e instanceof Error ? e.message : String(e);
+			benchRecord = null;
+		} finally {
+			benchLoading = false;
+		}
+	}
 	// Local verify-on-collect: the dashboard backend runs the SDK's verify_bundle
 	// on the collected bundle (on this machine) and returns the named-check result.
 	let verification = $state<BundleVerification | null>(null);
@@ -500,6 +539,7 @@
 		<button class="tab" class:active={tab === 'progress'} onclick={() => (tab = 'progress')}>Progress</button>
 		<button class="tab" class:active={tab === 'evidence'} onclick={() => (tab = 'evidence')}>Evidence</button>
 		<button class="tab" class:active={tab === 'export'} onclick={() => (tab = 'export')}>Export</button>
+		<button class="tab" class:active={tab === 'benchmark'} onclick={() => { tab = 'benchmark'; loadBenchRefs(); }}>Benchmark</button>
 	</nav>
 
 	{#if tab === 'progress'}
@@ -1064,6 +1104,70 @@
 	{/if}
 	{/if}
 
+	{#if tab === 'benchmark'}
+	<h2>Drift Benchmark</h2>
+	<p class="muted small">
+		One comparable measurement: each declared feature's shift ÷ its calibrated tolerance
+		(envelope units — 1.0 is the boundary between noise and drift). Scored over two
+		custody-verified bundles; the reference experiment's signed manifest defines the
+		envelope, and a published number always names its reference. Byte-level and
+		within-run divergence are reported separately — never folded into the score.
+	</p>
+	<div class="bench-controls">
+		<label>
+			reference
+			<select bind:value={benchRef}>
+				<option value="" disabled>choose a completed experiment…</option>
+				{#each benchRefs as e (e.experiment_id)}
+					<option value={e.experiment_id}>{e.tenant_experiment_label ?? e.experiment_id}</option>
+				{/each}
+			</select>
+		</label>
+		<button class="primary" onclick={runBenchmark} disabled={!benchRef || benchLoading}>
+			{benchLoading ? 'Scoring…' : 'Run benchmark'}
+		</button>
+	</div>
+	{#if benchError}<p class="warn-text">{benchError}</p>{/if}
+	{#if benchRecord}
+		{@const rep = benchRecord.report}
+		<div class="bench-headline">
+			<span class="bench-peak">{rep.peak_eu != null ? `${rep.peak_eu.toFixed(2)} EU` : 'n/a'}</span>
+			<span class="muted">peak drift</span>
+			{#if rep.breadth != null}<span>· {(rep.breadth * 100).toFixed(0)}% of probes beyond envelope</span>{/if}
+			{#if rep.byte_divergence_rate != null}<span class="muted">· byte-divergence {(rep.byte_divergence_rate * 100).toFixed(0)}% (separate overlay)</span>{/if}
+		</div>
+		{#if rep.diverged_units_total}
+			<p class="warn-text">
+				⚠ within-run divergence (signed evidence, not scorable): {rep.diverged_units_total} unit(s)
+				{#if rep.diverged_by_key}— {Object.entries(rep.diverged_by_key).map(([k, n]) => `${k}: ${n}`).join(' · ')}{/if}
+			</p>
+		{/if}
+		<table class="bench-table">
+			<thead><tr><th>probe</th><th>peak</th><th>features (median EU)</th><th>byte-div</th></tr></thead>
+			<tbody>
+				{#each rep.probes as pr (pr.key)}
+					<tr>
+						<td>{pr.key}{#if pr.beyond_envelope} <span class="beyond">beyond envelope</span>{/if}</td>
+						<td class="mono">{pr.peak_eu != null ? pr.peak_eu.toFixed(2) : 'n/a'}</td>
+						<td class="muted small">
+							{pr.features
+								.filter((f) => f.eu != null)
+								.map((f) => `${f.feature} ${f.eu?.toFixed(2)}`)
+								.join(' · ') || '—'}
+						</td>
+						<td class="muted">{pr.byte_divergence_rate != null ? `${(pr.byte_divergence_rate * 100).toFixed(0)}%` : '—'}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+		{#each rep.notes as n (n)}<p class="muted small">note: {n}</p>{/each}
+		<p class="muted small">
+			reference: <span class="mono">{benchRecord.reference.label ?? benchRecord.reference.experiment_id}</span>
+			{#if benchRecord.saved_path}· saved: <span class="mono">{benchRecord.saved_path}</span> · aggregated on <a href="/benchmarks">Benchmarks</a>{/if}
+		</p>
+	{/if}
+	{/if}
+
 	{#if tab === 'evidence'}
 	<h2>Receipts</h2>
 	{#if receipts === null}
@@ -1101,6 +1205,42 @@
 {/if}
 
 <style>
+	/* Drift Benchmark panel (D16.4): neutral facts; the score is data, not alarm. */
+	.bench-controls {
+		display: flex;
+		align-items: flex-end;
+		gap: 0.75rem;
+		margin: 0.4rem 0 0.8rem;
+	}
+	.bench-headline {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		margin: 0.6rem 0 0.4rem;
+		flex-wrap: wrap;
+	}
+	.bench-peak {
+		font-size: 1.5rem;
+		font-weight: 700;
+	}
+	.bench-table {
+		width: 100%;
+		border-collapse: collapse;
+		margin: 0.5rem 0;
+		font-size: 0.9rem;
+	}
+	.bench-table th,
+	.bench-table td {
+		text-align: left;
+		padding: 0.35rem 0.6rem 0.35rem 0;
+		border-bottom: 1px solid var(--border, #e6e5e1);
+	}
+	.bench-table .beyond {
+		font-size: 0.75rem;
+		font-weight: 600;
+		margin-left: 0.4rem;
+	}
+
 	.back {
 		margin: 0 0 0.5rem;
 	}

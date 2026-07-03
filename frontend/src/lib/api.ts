@@ -322,6 +322,57 @@ export interface GovernanceFootprint {
 	};
 }
 
+// The Drift Benchmark report (ratified standard: peak + breadth headline;
+// byte-divergence and within-run divergence are separate overlays, never
+// folded into the scalar; the REFERENCE bundle's signed manifest defines the
+// envelope, and published numbers always name their reference).
+export interface BenchmarkFeature {
+	feature: string;
+	rule: string;
+	eu: number | null;
+	eu_max: number | null;
+	pairs: number;
+	invalid_excluded: number;
+}
+export interface BenchmarkProbe {
+	key: string;
+	peak_eu: number | null;
+	beyond_envelope: boolean;
+	byte_divergence_rate: number | null;
+	observations: number;
+	reference_observations: number;
+	features: BenchmarkFeature[];
+}
+export interface BenchmarkReport {
+	peak_eu: number | null;
+	breadth: number | null;
+	byte_divergence_rate: number | null;
+	diverged_units_total: number | null;
+	diverged_by_key: Record<string, number> | null;
+	key_feature: string;
+	notes: string[];
+	probes: BenchmarkProbe[];
+}
+export interface BenchmarkRecord {
+	schema: string;
+	computed_at: string;
+	observation: { experiment_id: string; label?: string | null };
+	reference: { experiment_id: string; label?: string | null };
+	report: BenchmarkReport;
+	saved_path?: string | null;
+}
+export interface BenchmarkSummary {
+	computed_at?: string;
+	observation?: { experiment_id?: string; label?: string | null };
+	reference?: { experiment_id?: string; label?: string | null };
+	peak_eu?: number | null;
+	breadth?: number | null;
+	byte_divergence_rate?: number | null;
+	diverged_units_total?: number | null;
+	probes?: number;
+	path?: string;
+}
+
 export interface VerificationCheck {
 	name: string;
 	state: 'pass' | 'fail' | 'na';
@@ -585,6 +636,15 @@ export const api = {
 	// researcher. A `conflict` ApiError here is the verify-on-export tamper
 	// alarm — the coordinator refused to sign custody over a set that fails
 	// verification.
+	// The Drift Benchmark (D16.4): score this experiment against a reference in
+	// envelope units — computed server-side over two custody-verified bundles.
+	benchmarkExperiment: (id: string, reference: string, label?: string, referenceLabel?: string) =>
+		getJson<BenchmarkRecord>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/benchmark?reference=${encodeURIComponent(reference)}` +
+				(label ? `&label=${encodeURIComponent(label)}` : '') +
+				(referenceLabel ? `&reference_label=${encodeURIComponent(referenceLabel)}` : '')
+		),
+	listBenchmarks: () => getJson<{ benchmarks: BenchmarkSummary[] }>('/api/v0/benchmarks'),
 	exportResults: (id: string, label?: string) =>
 		getJson<ExportResponse>(
 			`/api/v0/experiments/${encodeURIComponent(id)}/results/export` +
