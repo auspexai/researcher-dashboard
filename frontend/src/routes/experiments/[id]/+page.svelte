@@ -1233,16 +1233,18 @@
 
 				<div class="pub-actions">
 					<button
-						class="primary"
+						class="act"
 						disabled={standing == null || standing < 1 || pubBusy}
 						onclick={() => (pubModal = 'benchmark')}
+						title="Publish this score to the public board — signed with your tenant key; authorization and audit recorded coordinator-side."
 					>
 						Publish benchmark…
 					</button>
 					<button
-						class="secondary"
+						class="act"
 						disabled={standing == null || standing < 3 || pubBusy}
 						onclick={() => (pubModal = 'doi')}
+						title="Mint a citable DOI for this experiment (metadata + verification anchors only)."
 					>
 						Mint DOI…
 					</button>
@@ -1278,10 +1280,10 @@
 							destination: auspexai.network/benchmarks.html · signed with your tenant key ·
 							authorization + audit recorded coordinator-side
 						</p>
-						<button class="primary" disabled={pubBusy} onclick={confirmPublish}>
+						<button class="act" disabled={pubBusy} onclick={confirmPublish}>
 							{pubBusy ? 'Publishing…' : 'Confirm publish'}
 						</button>
-						<button class="secondary" onclick={() => (pubModal = null)}>Cancel</button>
+						<button class="act ghost" onclick={() => (pubModal = null)}>Cancel</button>
 					</div>
 				{:else if pubModal === 'doi'}
 					<div class="pub-confirm">
@@ -1291,10 +1293,10 @@
 							registrar: Zenodo · metadata + verification anchors only (never content) ·
 							requires a published benchmark · recorded in the audit log
 						</p>
-						<button class="primary" disabled={pubBusy} onclick={confirmMintDoi}>
+						<button class="act" disabled={pubBusy} onclick={confirmMintDoi}>
 							{pubBusy ? 'Minting…' : 'Confirm mint'}
 						</button>
-						<button class="secondary" onclick={() => (pubModal = null)}>Cancel</button>
+						<button class="act ghost" onclick={() => (pubModal = null)}>Cancel</button>
 					</div>
 				{/if}
 			{/if}
