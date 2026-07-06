@@ -92,6 +92,7 @@ export interface Experiment {
 	// E15: coarse, presentation-only phase (queued/running/inert/awaiting_assessment/…)
 	// so `status` doesn't conflate the in-flight states. None where status says it.
 	run_phase?: string;
+	expected_duration_hours?: number | null;
 	tenant_experiment_label?: string;
 	submitted_at?: string;
 	started_at?: string;

@@ -468,6 +468,16 @@
 
 	<LifecycleTimeline {experiment} {activity} />
 
+{#if experiment?.expected_duration_hours && experiment?.started_at && !experiment?.completed_at}
+	{@const durMs = experiment.expected_duration_hours * 3600e3}
+	{@const elapsed = Date.now() - new Date(experiment.started_at).getTime()}
+	{@const eta = new Date(new Date(experiment.started_at).getTime() + durMs)}
+	<p class="muted" style="margin-top:0.3rem">
+		{experiment.expected_duration_hours}h run · {(Math.min(elapsed, durMs) / 3600e3).toFixed(1)}h
+		elapsed ({Math.min(100, Math.round((elapsed / durMs) * 100))}%) · completes ~{eta.toLocaleString()}
+	</p>
+{/if}
+
 	<ActivityHeart {experiment} {activity} {coordReachable} {coordReconnecting} />
 
 	<!-- D8 "liveness note": a paused/stalled run self-explains here — most
