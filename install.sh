@@ -259,27 +259,40 @@ fi
 say "installed: $("$APP_DIR/bin/auspexai-dashboard" --version 2>/dev/null || echo auspexai-dashboard) ✓"
 say "installed: $("$APP_DIR/bin/auspexai-tenant" --version 2>/dev/null || echo auspexai-tenant) ✓"
 
-# ── E14b: inline worker offer (USER req #6) ──────────────────────────────────
-# Researchers are often also volunteers. Offer the worker install INSIDE this
-# flow — download + run its (cosign-verified) installer right here, never
-# "go run this other script yourself". Skipped silently with no tty, and on
-# updates when a worker is already present.
-if (exec </dev/tty) 2>/dev/null && ! command -v auspexai-worker >/dev/null 2>&1; then
-  printf 'Also contribute compute? Install the AuspexAI worker on this machine too [y/N]: '
-  read -r ANSWER </dev/tty || ANSWER=""
-  case "$ANSWER" in
-    y|Y|yes|YES)
-      say "fetching the worker installer …"
-      WORKER_SH="$(mktemp)"
-      if curl -f -L --progress-bar -o "$WORKER_SH" https://getworker.auspexai.network; then
-        bash "$WORKER_SH" </dev/tty || say "worker install reported a problem — re-run anytime: curl -fsSL https://getworker.auspexai.network | bash"
-      else
-        say "could not fetch the worker installer — run it anytime: curl -fsSL https://getworker.auspexai.network | bash"
-      fi
-      rm -f "$WORKER_SH"
-      ;;
-    *) say "skipped — install anytime: curl -fsSL https://getworker.auspexai.network | bash" ;;
-  esac
+# ── E14b: inline worker offer/update (USER reqs #6 + 2026-07-06 follow-up) ────
+# Researchers are often also volunteers. Offer the worker INSIDE this flow —
+# fetch + run its (cosign-verified) installer here, never "go run that other
+# script". The worker installer is idempotent (installs OR updates), so we offer
+# in BOTH cases: install when absent (explicit opt-in, default No), update when
+# present (they already opted in — default Yes, so a routine R-D roll keeps the
+# worker current too). Skipped only with no tty.
+_run_worker_installer() {
+  say "fetching the worker installer …"
+  WORKER_SH="$(mktemp)"
+  if curl -f -L --progress-bar -o "$WORKER_SH" https://getworker.auspexai.network; then
+    bash "$WORKER_SH" </dev/tty || say "worker installer reported a problem — re-run anytime: curl -fsSL https://getworker.auspexai.network | bash"
+  else
+    say "could not fetch the worker installer — run it anytime: curl -fsSL https://getworker.auspexai.network | bash"
+  fi
+  rm -f "$WORKER_SH"
+}
+if (exec </dev/tty) 2>/dev/null; then
+  if command -v auspexai-worker >/dev/null 2>&1; then
+    WORKER_VER="$(auspexai-worker --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
+    printf 'Also update the AuspexAI worker on this machine? (installed: %s) [Y/n]: ' "$WORKER_VER"
+    read -r ANSWER </dev/tty || ANSWER=""
+    case "$ANSWER" in
+      n|N|no|NO) say "kept the current worker — update anytime: curl -fsSL https://getworker.auspexai.network | bash" ;;
+      *) _run_worker_installer ;;
+    esac
+  else
+    printf 'Also contribute compute? Install the AuspexAI worker on this machine too [y/N]: '
+    read -r ANSWER </dev/tty || ANSWER=""
+    case "$ANSWER" in
+      y|Y|yes|YES) _run_worker_installer ;;
+      *) say "skipped — install anytime: curl -fsSL https://getworker.auspexai.network | bash" ;;
+    esac
+  fi
 fi
 
 URL="http://127.0.0.1:$DASH_PORT/"
