@@ -134,7 +134,9 @@ fetch_verified_wheel() { # display-name  github-repo -> sets VERIFIED_WHL
   url="https://github.com/auspexai/$repo/releases/download/$tag/$whl"
   for i in 1 2 3; do
     [ "$i" -gt 1 ] && sleep "$i"
-    if curl -fsSL -o "$WHEELS_TMP/$whl" "$url"; then break; fi
+    # E14b: -# ties the bar to REAL transfer bytes (a silent fetch of a large
+    # wheel reads as a stall).
+    if curl -f -L --progress-bar -o "$WHEELS_TMP/$whl" "$url"; then break; fi
     [ "$i" = 3 ] && fail "could not download $whl (after 3 attempts) — check your network and re-run"
   done
   verify_artifact "$WHEELS_TMP/$whl" "$url"
@@ -256,6 +258,29 @@ fi
 # ── done ─────────────────────────────────────────────────────────────────────
 say "installed: $("$APP_DIR/bin/auspexai-dashboard" --version 2>/dev/null || echo auspexai-dashboard) ✓"
 say "installed: $("$APP_DIR/bin/auspexai-tenant" --version 2>/dev/null || echo auspexai-tenant) ✓"
+
+# ── E14b: inline worker offer (USER req #6) ──────────────────────────────────
+# Researchers are often also volunteers. Offer the worker install INSIDE this
+# flow — download + run its (cosign-verified) installer right here, never
+# "go run this other script yourself". Skipped silently with no tty, and on
+# updates when a worker is already present.
+if (exec </dev/tty) 2>/dev/null && ! command -v auspexai-worker >/dev/null 2>&1; then
+  printf 'Also contribute compute? Install the AuspexAI worker on this machine too [y/N]: '
+  read -r ANSWER </dev/tty || ANSWER=""
+  case "$ANSWER" in
+    y|Y|yes|YES)
+      say "fetching the worker installer …"
+      WORKER_SH="$(mktemp)"
+      if curl -f -L --progress-bar -o "$WORKER_SH" https://getworker.auspexai.network; then
+        bash "$WORKER_SH" </dev/tty || say "worker install reported a problem — re-run anytime: curl -fsSL https://getworker.auspexai.network | bash"
+      else
+        say "could not fetch the worker installer — run it anytime: curl -fsSL https://getworker.auspexai.network | bash"
+      fi
+      rm -f "$WORKER_SH"
+      ;;
+    *) say "skipped — install anytime: curl -fsSL https://getworker.auspexai.network | bash" ;;
+  esac
+fi
 
 URL="http://127.0.0.1:$DASH_PORT/"
 if [ "$UPDATING" = "1" ]; then
