@@ -545,6 +545,12 @@ def build_api_router() -> APIRouter:
             )
         return JSONResponse(content={"benchmarks": rows})
 
+    @router.get("/experiments/{experiment_id}/events/recent")
+    async def experiment_events_recent(request: Request, experiment_id: str) -> JSONResponse:
+        """UI fix C: the coordinator's replay ring — the activity trace
+        rehydrates on mount instead of losing history to navigation."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/events/recent")
+
     @router.get("/experiments/{experiment_id}/attestation")
     async def get_experiment_attestation(request: Request, experiment_id: str) -> JSONResponse:
         """The result-set attestation for one of my experiments (integrity

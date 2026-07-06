@@ -70,6 +70,25 @@
 	// at launch, so a completed run's score simply exists — computed server-side
 	// over two custody-verified bundles on first view, persisted beside the run.
 	// `track` is the flip side: runs scored against THIS run as their baseline.
+	// UI fix C: rehydrate the activity trace from the coordinator's replay ring.
+	let heartSeed = $state<{ t: number; c: number }[]>([]);
+	async function loadHeartSeed() {
+		if (!id) return;
+		try {
+			const evs = (await api.recentEvents(id)).events.filter(
+				(e) => e.type === 'unit.progress' && e.at
+			);
+			let c = 0;
+			heartSeed = evs.map((e) => ({ t: Date.parse(e.at), c: ++c }));
+		} catch {
+			/* ring unavailable → live-only, as before */
+		}
+	}
+	$effect(() => {
+		void id; // re-seed on route change
+		void loadHeartSeed();
+	});
+
 	let bench = $state<ExperimentBenchmarks | null>(null);
 	let benchSelected = $state<BenchmarkRecord | null>(null);
 	let benchLoading = $state(false);
@@ -478,7 +497,7 @@
 	</p>
 {/if}
 
-	<ActivityHeart {experiment} {activity} {coordReachable} {coordReconnecting} />
+	<ActivityHeart {experiment} {activity} {coordReachable} {coordReconnecting}  seed={heartSeed} />
 
 	<!-- D8 "liveness note": a paused/stalled run self-explains here — most
 	     importantly, a C14 regime-3 pause reads as a "waiting for an eligible

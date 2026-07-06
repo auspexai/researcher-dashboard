@@ -12,7 +12,8 @@
 		experiment,
 		activity,
 		coordReachable = null,
-		coordReconnecting = false
+		coordReconnecting = false,
+		seed
 	}: {
 		experiment: Experiment;
 		activity: ExperimentActivity | null;
@@ -21,11 +22,22 @@
 		// but we haven't hit the unreachable threshold — show "reconnecting…", not
 		// a red alarm, so a routine deploy doesn't look like an outage.
 		coordReconnecting?: boolean;
+		// UI fix C: server-seeded trace (from /events/recent) — survives navigation.
+		seed?: { t: number; c: number }[];
 	} = $props();
 
 	type Sample = { t: number; c: number };
 	const MAX_SAMPLES = 160; // ~16 min at a 6s poll — enough to read a 5-min cadence
 	let history = $state<Sample[]>([]);
+	let seeded = $state(false);
+	$effect(() => {
+		if (!seeded && seed && seed.length) {
+			seeded = true;
+			untrack(() => {
+				history = [...seed.slice(-MAX_SAMPLES)];
+			});
+		}
+	});
 
 	// A terminal experiment's heart is calm (done), not a worrying flatline.
 	const live = $derived(

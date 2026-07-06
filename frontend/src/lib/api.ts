@@ -666,6 +666,10 @@ export const api = {
 	// on first view). `track` is the flip side — runs scored against THIS run.
 	// Ad-hoc comparisons are a CLI capability, deliberately not a dashboard one.
 	listBenchmarks: () => getJson<{ benchmarks: BenchmarkSummary[] }>('/api/v0/benchmarks'),
+	recentEvents: (id: string) =>
+		getJson<{ events: { type: string; at: string; experiment_id: string | null }[] }>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/events/recent?limit=1000`
+		),
 	experimentBenchmarks: (id: string, label?: string) =>
 		getJson<ExperimentBenchmarks>(
 			`/api/v0/experiments/${encodeURIComponent(id)}/benchmarks` +
