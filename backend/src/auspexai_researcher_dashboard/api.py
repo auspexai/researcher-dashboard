@@ -564,7 +564,9 @@ def build_api_router() -> APIRouter:
         """G6/F4: forwards the R3-gated mint to the coordinator (which enforces
         the full gate chain and types every refusal). The frontend button shows
         a confirm-before-send preview; this fires only on Confirm."""
-        return await _proxy_post_body(request, f"/api/v0/experiments/{experiment_id}/actions/mint-doi", status_code=200)
+        return await _proxy_post_body(
+            request, f"/api/v0/experiments/{experiment_id}/actions/mint-doi", status_code=200
+        )
 
     @router.post("/experiments/{experiment_id}/publish-benchmark")
     async def publish_benchmark(request: Request, experiment_id: str) -> JSONResponse:
@@ -575,7 +577,6 @@ def build_api_router() -> APIRouter:
         import os
         from datetime import UTC, datetime
 
-        from auspexai_tenant.benchmark import drift_benchmark_bundles
         from auspexai_tenant.benchmark_entry import build_entry, verify_entry
         from auspexai_tenant.evidence import verify_bundle
         from auspexai_tenant.experiment import Experiment
@@ -583,8 +584,7 @@ def build_api_router() -> APIRouter:
         cfg = request.app.state.config
         client = _client(request)
         try:
-            exp = await client.get_json(f"/api/v0/experiments/{experiment_id}")
-            label = exp.get("tenant_experiment_label") or experiment_id
+            await client.get_json(f"/api/v0/experiments/{experiment_id}")
             # The saved report (the Benchmark tab's data) names the reference.
             records = [
                 r
@@ -594,18 +594,30 @@ def build_api_router() -> APIRouter:
             if not records:
                 return JSONResponse(
                     status_code=409,
-                    content={"error": {"code": "no_saved_report", "message": "score the run first (Benchmark tab)"}},
+                    content={
+                        "error": {
+                            "code": "no_saved_report",
+                            "message": "score the run first (Benchmark tab)",
+                        }
+                    },
                 )
             record = records[0]
             reference_id = record["reference"]["experiment_id"]
-            obs_bundle = await client.get_json(f"/api/v0/experiments/{experiment_id}/results/export")
+            obs_bundle = await client.get_json(
+                f"/api/v0/experiments/{experiment_id}/results/export"
+            )
             ref_bundle = await client.get_json(f"/api/v0/experiments/{reference_id}/results/export")
             for side, blob in (("observation", obs_bundle), ("reference", ref_bundle)):
                 v = await run_in_threadpool(verify_bundle, blob)
                 if not v.ok:
                     return JSONResponse(
                         status_code=409,
-                        content={"error": {"code": "bundle_unverified", "message": f"the {side} bundle failed verification"}},
+                        content={
+                            "error": {
+                                "code": "bundle_unverified",
+                                "message": f"the {side} bundle failed verification",
+                            }
+                        },
                     )
             from auspexai_tenant.signing import TenantKey
 
@@ -640,10 +652,12 @@ def build_api_router() -> APIRouter:
             submit_url = os.environ.get(
                 "AUSPEXAI_BOARD_SUBMIT_URL", "https://board.auspexai.network/submit"
             )
-            sresp = await run_in_threadpool(
-                lambda: _httpx.post(submit_url, json=entry, timeout=30)
+            sresp = await run_in_threadpool(lambda: _httpx.post(submit_url, json=entry, timeout=30))
+            body = (
+                sresp.json()
+                if sresp.headers.get("content-type", "").startswith("application/json")
+                else {}
             )
-            body = sresp.json() if sresp.headers.get("content-type", "").startswith("application/json") else {}
             return JSONResponse(
                 content={
                     "status": body.get("status") or f"http-{sresp.status_code}",
