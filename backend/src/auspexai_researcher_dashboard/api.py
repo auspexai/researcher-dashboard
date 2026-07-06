@@ -545,6 +545,14 @@ def build_api_router() -> APIRouter:
             )
         return JSONResponse(content={"benchmarks": rows})
 
+    @router.get("/experiments/{experiment_id}/raw-content")
+    async def raw_content(request: Request, experiment_id: str) -> JSONResponse:
+        """D20: collect the run's buffered raw model outputs (R3-only, audited,
+        live — the coordinator enforces the gate and never stores raw). The
+        driver is the primary collector during a run; this exposes the same
+        R3-gated pull to the dashboard."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/raw-content")
+
     @router.get("/experiments/{experiment_id}/publications")
     async def experiment_publications(request: Request, experiment_id: str) -> JSONResponse:
         """G6: the experiment's publication records (benchmark authorizations +
