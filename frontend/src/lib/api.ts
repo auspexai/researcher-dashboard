@@ -363,6 +363,16 @@ export interface BenchmarkRecord {
 	report: BenchmarkReport;
 	saved_path?: string | null;
 }
+export interface PublicationRecord {
+	record_id: string;
+	kind: string;
+	standing_at_issue: number;
+	summary: Record<string, unknown>;
+	obs_merkle_root?: string | null;
+	obs_rekor_uuid?: string | null;
+	doi?: string | null;
+	created_at: string;
+}
 export interface BenchmarkDeclaration {
 	schema?: string;
 	mode?: string;
@@ -666,6 +676,19 @@ export const api = {
 	// on first view). `track` is the flip side — runs scored against THIS run.
 	// Ad-hoc comparisons are a CLI capability, deliberately not a dashboard one.
 	listBenchmarks: () => getJson<{ benchmarks: BenchmarkSummary[] }>('/api/v0/benchmarks'),
+	experimentPublications: (id: string) =>
+		getJson<{ publications: PublicationRecord[] }>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/publications`
+		),
+	publishBenchmark: (id: string) =>
+		postJson<{ status: string; pr?: string; authorized: boolean }>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/publish-benchmark`
+		),
+	mintDoi: (id: string) =>
+		postJsonBody<{ doi?: string; record_url?: string; mode?: string }>(
+			`/api/v0/experiments/${encodeURIComponent(id)}/actions/mint-doi`,
+			{}
+		),
 	recentEvents: (id: string) =>
 		getJson<{ events: { type: string; at: string; experiment_id: string | null }[] }>(
 			`/api/v0/experiments/${encodeURIComponent(id)}/events/recent?limit=1000`

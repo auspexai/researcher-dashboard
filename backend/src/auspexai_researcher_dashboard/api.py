@@ -545,6 +545,108 @@ def build_api_router() -> APIRouter:
             )
         return JSONResponse(content={"benchmarks": rows})
 
+    @router.get("/experiments/{experiment_id}/publications")
+    async def experiment_publications(request: Request, experiment_id: str) -> JSONResponse:
+        """G6: the experiment's publication records (benchmark authorizations +
+        DOI facts) — feeds the buttons' state + the published-facts display."""
+        return await _proxy(request, f"/api/v0/experiments/{experiment_id}/publications")
+
+    @router.post("/experiments/{experiment_id}/actions/mint-doi")
+    async def mint_doi(request: Request, experiment_id: str) -> JSONResponse:
+        """G6/F4: forwards the R3-gated mint to the coordinator (which enforces
+        the full gate chain and types every refusal). The frontend button shows
+        a confirm-before-send preview; this fires only on Confirm."""
+        return await _proxy_post_body(request, f"/api/v0/experiments/{experiment_id}/actions/mint-doi", status_code=200)
+
+    @router.post("/experiments/{experiment_id}/publish-benchmark")
+    async def publish_benchmark(request: Request, experiment_id: str) -> JSONResponse:
+        """G6: the one-command publish, server-side (this backend holds the
+        tenant key) — authorization request (R1+ gate, audited) → signed entry
+        → board submission. Composed from SDK library pieces; fires only after
+        the frontend's confirm."""
+        import os
+        from datetime import UTC, datetime
+
+        from auspexai_tenant.benchmark import drift_benchmark_bundles
+        from auspexai_tenant.benchmark_entry import build_entry, verify_entry
+        from auspexai_tenant.evidence import verify_bundle
+        from auspexai_tenant.experiment import Experiment
+
+        cfg = request.app.state.config
+        client = _client(request)
+        try:
+            exp = await client.get_json(f"/api/v0/experiments/{experiment_id}")
+            label = exp.get("tenant_experiment_label") or experiment_id
+            # The saved report (the Benchmark tab's data) names the reference.
+            records = [
+                r
+                for r in _scan_benchmark_records(_runs_bases(cfg))
+                if (r.get("observation") or {}).get("experiment_id") == experiment_id
+            ]
+            if not records:
+                return JSONResponse(
+                    status_code=409,
+                    content={"error": {"code": "no_saved_report", "message": "score the run first (Benchmark tab)"}},
+                )
+            record = records[0]
+            reference_id = record["reference"]["experiment_id"]
+            obs_bundle = await client.get_json(f"/api/v0/experiments/{experiment_id}/results/export")
+            ref_bundle = await client.get_json(f"/api/v0/experiments/{reference_id}/results/export")
+            for side, blob in (("observation", obs_bundle), ("reference", ref_bundle)):
+                v = await run_in_threadpool(verify_bundle, blob)
+                if not v.ok:
+                    return JSONResponse(
+                        status_code=409,
+                        content={"error": {"code": "bundle_unverified", "message": f"the {side} bundle failed verification"}},
+                    )
+            from auspexai_tenant.signing import TenantKey
+
+            tkey = TenantKey.load(cfg.key_path)
+            rep = record.get("report") or {}
+            authorization = None
+            resp = Experiment(cfg.coord_url, tkey, experiment_id)._post(
+                f"/api/v0/experiments/{experiment_id}/actions/authorize-benchmark-publication",
+                json={
+                    "reference_experiment_id": reference_id,
+                    "peak_eu": rep.get("peak_eu"),
+                    "breadth": rep.get("breadth"),
+                    "byte_divergence_rate": rep.get("byte_divergence_rate"),
+                },
+            )
+            if resp.status_code == 200:
+                authorization = resp.json()["authorization"]
+            elif resp.status_code == 403:
+                detail = resp.json().get("detail", {}).get("error", {})
+                return JSONResponse(status_code=403, content={"error": detail})
+            entry = build_entry(
+                record=record,
+                observation_bundle=obs_bundle,
+                reference_bundle=ref_bundle,
+                tenant_id=(obs_bundle.get("manifest") or {}).get("tenant_id"),
+                key=tkey,
+                authorization=authorization,
+            )
+            assert verify_entry(entry) is not None
+            import httpx as _httpx
+
+            submit_url = os.environ.get(
+                "AUSPEXAI_BOARD_SUBMIT_URL", "https://board.auspexai.network/submit"
+            )
+            sresp = await run_in_threadpool(
+                lambda: _httpx.post(submit_url, json=entry, timeout=30)
+            )
+            body = sresp.json() if sresp.headers.get("content-type", "").startswith("application/json") else {}
+            return JSONResponse(
+                content={
+                    "status": body.get("status") or f"http-{sresp.status_code}",
+                    "pr": body.get("pr"),
+                    "authorized": authorization is not None,
+                    "submitted_at": datetime.now(UTC).isoformat(),
+                }
+            )
+        except CoordinatorError as e:
+            return _envelope(e)
+
     @router.get("/experiments/{experiment_id}/events/recent")
     async def experiment_events_recent(request: Request, experiment_id: str) -> JSONResponse:
         """UI fix C: the coordinator's replay ring — the activity trace

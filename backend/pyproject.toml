@@ -30,7 +30,7 @@ dependencies = [
     # Floor pinned to >=0.6.12: the credential rename made the dashboard import
     # `TenantKey` (was `MaintainerKey`), which only exists from 0.6.12 — the
     # floor stops any environment resolving a pre-rename SDK against this code.
-    "auspexai-tenant>=0.6.29",  # drift benchmark (D16.4) + divergence overlay
+    "auspexai-tenant>=0.6.45",  # G6 publication authorization in build_entry
 ]
 
 [project.optional-dependencies]

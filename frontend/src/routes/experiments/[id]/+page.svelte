@@ -10,7 +10,7 @@
 		type ExperimentActivity,
 		type Receipt,
 		type ResultItem,
-		type WorkUnits, type BenchmarkRecord, type ExperimentBenchmarks } from '$lib/api';
+		type WorkUnits, type BenchmarkRecord, type ExperimentBenchmarks, type PublicationRecord } from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import ActivityHeart from '$lib/components/ActivityHeart.svelte';
@@ -89,6 +89,58 @@
 		void loadHeartSeed();
 	});
 
+	// G6: publication state — standing gates, records, confirm-before-send.
+	let standing = $state<number | null>(null);
+	let pubs = $state<PublicationRecord[]>([]);
+	let pubModal = $state<'benchmark' | 'doi' | null>(null);
+	let pubBusy = $state(false);
+	let pubResult = $state<string | null>(null);
+	async function loadPublications() {
+		if (!id) return;
+		try {
+			pubs = (await api.experimentPublications(id)).publications ?? [];
+		} catch {
+			pubs = [];
+		}
+		try {
+			standing = (await api.whoami()).research_standing ?? 0;
+		} catch {
+			standing = null;
+		}
+	}
+	async function confirmPublish() {
+		if (!id) return;
+		pubBusy = true;
+		pubResult = null;
+		try {
+			const r = await api.publishBenchmark(id);
+			pubResult = r.pr
+				? `submitted — admission PR: ${r.pr}`
+				: `submission status: ${r.status}`;
+			await loadPublications();
+		} catch (e) {
+			pubResult = e instanceof Error ? e.message : String(e);
+		} finally {
+			pubBusy = false;
+			pubModal = null;
+		}
+	}
+	async function confirmMintDoi() {
+		if (!id) return;
+		pubBusy = true;
+		pubResult = null;
+		try {
+			const r = await api.mintDoi(id);
+			pubResult = r.doi ? `DOI minted: ${r.doi} (${r.mode})` : 'mint returned no DOI';
+			await loadPublications();
+		} catch (e) {
+			pubResult = e instanceof Error ? e.message : String(e);
+		} finally {
+			pubBusy = false;
+			pubModal = null;
+		}
+	}
+
 	let bench = $state<ExperimentBenchmarks | null>(null);
 	let benchSelected = $state<BenchmarkRecord | null>(null);
 	let benchLoading = $state(false);
@@ -97,6 +149,7 @@
 		benchLoading = true;
 		try {
 			bench = await api.experimentBenchmarks(id, experiment?.tenant_experiment_label ?? undefined);
+			void loadPublications();
 			benchSelected = bench.benchmarks[0] ?? null;
 		} catch {
 			bench = null;
@@ -1177,6 +1230,73 @@
 				</table>
 				{#each rep.notes as n (n)}<p class="muted small">note: {n}</p>{/each}
 				<p class="muted small">computed {benchSelected.computed_at?.slice(0, 16).replace('T', ' ')}</p>
+
+				<div class="pub-actions">
+					<button
+						class="primary"
+						disabled={standing == null || standing < 1 || pubBusy}
+						onclick={() => (pubModal = 'benchmark')}
+					>
+						Publish benchmark…
+					</button>
+					<button
+						class="secondary"
+						disabled={standing == null || standing < 3 || pubBusy}
+						onclick={() => (pubModal = 'doi')}
+					>
+						Mint DOI…
+					</button>
+					{#if standing != null && standing < 1}
+						<span class="muted small">publishing requires research standing R1+ (yours: R{standing}) — verify your identity first</span>
+					{:else if standing != null && standing < 3}
+						<span class="muted small">DOI issuance requires R3 (yours: R{standing})</span>
+					{/if}
+				</div>
+				{#if pubResult}<p class="muted small">{pubResult}</p>{/if}
+				{#if pubs.length}
+					<div class="pub-records">
+						{#each pubs as p2 (p2.record_id)}
+							<p class="muted small">
+								{#if p2.kind === 'doi'}
+									DOI <strong>{p2.doi}</strong> · minted {p2.created_at.slice(0, 10)} (R{p2.standing_at_issue})
+								{:else}
+									published: peak {p2.summary.peak_eu} EU vs <code>{p2.summary.reference_experiment_id}</code>
+									· {p2.created_at.slice(0, 10)} · authorized at R{p2.standing_at_issue}
+								{/if}
+							</p>
+						{/each}
+					</div>
+				{/if}
+
+				{#if pubModal === 'benchmark'}
+					<div class="pub-confirm">
+						<h3>Publish this benchmark to the public board?</h3>
+						<p class="muted small">
+							peak <strong>{rep.peak_eu?.toFixed(2)} EU</strong>
+							{#if rep.breadth != null}· breadth {(rep.breadth * 100).toFixed(0)}%{/if}
+							· vs <code>{benchSelected.reference.experiment_id}</code><br />
+							destination: auspexai.network/benchmarks.html · signed with your tenant key ·
+							authorization + audit recorded coordinator-side
+						</p>
+						<button class="primary" disabled={pubBusy} onclick={confirmPublish}>
+							{pubBusy ? 'Publishing…' : 'Confirm publish'}
+						</button>
+						<button class="secondary" onclick={() => (pubModal = null)}>Cancel</button>
+					</div>
+				{:else if pubModal === 'doi'}
+					<div class="pub-confirm">
+						<h3>Mint a DOI for this experiment?</h3>
+						<p class="muted small">
+							experiment <code>{id}</code> ({experiment?.tenant_experiment_label})<br />
+							registrar: Zenodo · metadata + verification anchors only (never content) ·
+							requires a published benchmark · recorded in the audit log
+						</p>
+						<button class="primary" disabled={pubBusy} onclick={confirmMintDoi}>
+							{pubBusy ? 'Minting…' : 'Confirm mint'}
+						</button>
+						<button class="secondary" onclick={() => (pubModal = null)}>Cancel</button>
+					</div>
+				{/if}
 			{/if}
 		{:else if bench.materialize_error}
 			<p class="warn-text">
@@ -1258,6 +1378,27 @@
 
 <style>
 	/* Drift Benchmark panel (D16.4): neutral facts; the score is data, not alarm. */
+	.pub-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		margin: 0.8rem 0 0.4rem;
+		flex-wrap: wrap;
+	}
+	.pub-confirm {
+		border: 1px solid var(--border, #d9d8d4);
+		border-radius: 8px;
+		padding: 0.9rem 1.1rem;
+		margin: 0.6rem 0;
+	}
+	.pub-confirm h3 {
+		margin-bottom: 0.4rem;
+		font-size: 1rem;
+	}
+	.pub-confirm button {
+		margin-right: 0.5rem;
+		margin-top: 0.4rem;
+	}
 	.bench-list {
 		display: flex;
 		flex-wrap: wrap;
