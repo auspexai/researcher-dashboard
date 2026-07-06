@@ -1061,14 +1061,28 @@
 				onclick={() => (resultsInclude = 'raw')}
 			>All replicas</button>
 		</div>
-		<button
-			class="act"
-			onclick={doExport}
-			disabled={exporting}
-			title="Download the full offload bundle (results + receipts + manifest + signed custody record). Collecting transfers data custody to you."
-		>
-			{exporting ? 'Collecting…' : 'Download bundle'}
-		</button>
+		{#if confirming === 'export'}
+			<div class="export-confirm">
+				<p class="muted small">
+					Collecting <strong>transfers data custody + legal responsibility to you</strong> and
+					records a permanent signed proof-of-transfer. After collection the coordinator may
+					age off its copy — the bundle you download becomes the authoritative one.
+				</p>
+				<button class="act" onclick={() => { confirming = null; doExport(); }} disabled={exporting}>
+					{exporting ? 'Collecting…' : 'Confirm & collect'}
+				</button>
+				<button class="act ghost" onclick={() => (confirming = null)} disabled={exporting}>Cancel</button>
+			</div>
+		{:else}
+			<button
+				class="act"
+				onclick={() => (confirming = 'export')}
+				disabled={exporting}
+				title="Download the full offload bundle (results + receipts + manifest + signed custody record). Collecting transfers data custody to you."
+			>
+				{exporting ? 'Collecting…' : 'Download bundle'}
+			</button>
+		{/if}
 	</div>
 	{#if experiment?.results_collected_at}
 		<p class="muted collected">
@@ -1380,6 +1394,13 @@
 
 <style>
 	/* Drift Benchmark panel (D16.4): neutral facts; the score is data, not alarm. */
+	.export-confirm {
+		border: 1px solid var(--border, #d9d8d4);
+		border-radius: 8px;
+		padding: 0.8rem 1rem;
+		margin: 0.4rem 0;
+	}
+	.export-confirm button { margin-right: 0.5rem; }
 	.pub-actions {
 		display: flex;
 		align-items: center;
