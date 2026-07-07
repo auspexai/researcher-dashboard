@@ -762,6 +762,12 @@ def build_api_router() -> APIRouter:
         """The network's bottom-up model catalog (what active workers can run)."""
         return await _proxy(request, "/api/v0/models/catalog")
 
+    @router.get("/supported")
+    async def get_supported(request: Request) -> JSONResponse:
+        """The top-down curated catalog — every model the network SUPPORTS,
+        overlaid with the live fleet (served / runnable / too_big / unknown)."""
+        return await _proxy(request, "/api/v0/models/supported")
+
     @router.get("/model-requests")
     async def list_model_requests(request: Request) -> JSONResponse:
         """My model requests (tenant-scoped coordinator-side)."""

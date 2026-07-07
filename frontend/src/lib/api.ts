@@ -521,6 +521,21 @@ export interface CatalogEntry {
 	worker_count: number;
 }
 
+export type SupportedStatus = 'served' | 'runnable' | 'too_big' | 'unknown';
+
+export interface SupportedEntry {
+	model_id: string;
+	display_name: string;
+	family: string;
+	param_b: number;
+	quant: string;
+	approx_ram_gb: number;
+	served_worker_count: number;
+	fits_worker_count: number;
+	ram_known_workers: number;
+	status: SupportedStatus;
+}
+
 export interface ModelRequest {
 	request_id: string;
 	model_id: string;
@@ -722,6 +737,12 @@ export const api = {
 	// tenant-scoped coordinator-side; submits enter the maintainer review queue.
 	getCatalog: () =>
 		getJson<{ models?: CatalogEntry[]; total_active_workers?: number }>('/api/v0/catalog'),
+	getSupported: () =>
+		getJson<{
+			models?: SupportedEntry[];
+			total_active_workers?: number;
+			fleet_can_auto_acquire?: boolean;
+		}>('/api/v0/supported'),
 	listModelRequests: () =>
 		getJson<{ requests?: ModelRequest[] }>('/api/v0/model-requests'),
 	createModelRequest: (body: { model_id: string; reason: string; hf_repo?: string }) =>

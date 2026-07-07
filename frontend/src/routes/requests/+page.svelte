@@ -1,70 +1,93 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, ApiError, type CatalogEntry } from '$lib/api';
+	import { api, ApiError, type SupportedEntry } from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	// The in-app demand-board was retired (design D2): requests live on the
 	// AuspexAI community forum — GitHub Discussions — a public, votable place
 	// maintainers triage alongside the code. This page is the launchpad, led by
-	// a live view of what the network can already serve so you don't request a
-	// model the fleet already runs.
+	// the full menu of models the network supports (the green dot marks what's
+	// loaded on a worker right now) so you always know what you could work with.
 	const DISCUSSIONS = 'https://github.com/auspexai/.github/discussions';
 	const NEW = 'https://github.com/auspexai/.github/discussions/new/choose';
 
-	let models = $state<CatalogEntry[] | null>(null);
+	let models = $state<SupportedEntry[] | null>(null);
 	let totalWorkers = $state<number | null>(null);
+	let autoAcquire = $state(false);
 	let error = $state<ApiError | null>(null);
 
 	onMount(async () => {
 		try {
-			const data = await api.getCatalog();
+			const data = await api.getSupported();
 			totalWorkers = data.total_active_workers ?? 0;
-			// Most-corroborated first: more workers = more capacity + redundancy.
-			models = (data.models ?? []).sort(
-				(a, b) => b.worker_count - a.worker_count || a.model_id.localeCompare(b.model_id)
-			);
+			autoAcquire = data.fleet_can_auto_acquire ?? false;
+			models = data.models ?? []; // coordinator already sorts served → runnable → unknown → too_big
 		} catch (e) {
 			error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
 		}
 	});
+
+	function note(m: SupportedEntry): string {
+		switch (m.status) {
+			case 'served':
+				return `served on ${m.served_worker_count} worker${m.served_worker_count === 1 ? '' : 's'}`;
+			case 'runnable':
+				return m.fits_worker_count > 0
+					? `runnable · fits ${m.fits_worker_count} worker${m.fits_worker_count === 1 ? '' : 's'}`
+					: 'runnable';
+			case 'too_big':
+				return `needs a worker with ≥${m.approx_ram_gb} GB`;
+			default:
+				return 'available';
+		}
+	}
 </script>
 
 <h1>Requests</h1>
 <p class="lead">
-	Before requesting a model, check what the network can already serve. For anything missing, open a
-	request on the AuspexAI community forum — a public place maintainers triage alongside the code.
+	Every model the network can run — the green dot marks what's loaded on a worker right now.
+	Everything else is still runnable{autoAcquire ? ' (workers pull models on demand)' : ''}. For a
+	model that isn't here, open a request on the AuspexAI community forum.
 </p>
 
 <section class="card">
 	<div class="card-head">
-		<h2>Available on the network now</h2>
+		<h2>Models you can run</h2>
 		{#if totalWorkers !== null && !error}
 			<span class="pill">{totalWorkers} active worker{totalWorkers === 1 ? '' : 's'}</span>
 		{/if}
 	</div>
 	<p class="sub">
-		Models the fleet can serve right now — no request needed. The worker count is a rough
-		availability signal: more workers means more capacity and corroboration for your runs.
+		The full set the network supports. A <span class="dot served" aria-hidden="true"></span>
+		green dot means it's being served right now — no wait. The rest are still available to your
+		experiments.
 	</p>
 
 	{#if error}
 		<ErrorState {error} />
 	{:else if models === null}
 		<p class="muted">Loading…</p>
-	{:else if models.length === 0}
-		<p class="muted">
-			Nothing is being served right now — no active worker is holding a model. If you need one, open
-			a model request below.
-		</p>
 	{:else}
 		<ul class="models">
 			{#each models as m (m.model_id)}
-				<li>
-					<span class="model-id">{m.model_id}</span>
-					<span class="count">{m.worker_count} worker{m.worker_count === 1 ? '' : 's'}</span>
+				<li class:dim={m.status === 'too_big'}>
+					<span class="dot {m.status}" title={m.status} aria-label={m.status}></span>
+					<span class="name">
+						<span class="display">{m.display_name}</span>
+						<span class="model-id">{m.model_id}</span>
+					</span>
+					<span class="meta">
+						<span class="status-note">{note(m)}</span>
+						<span class="ram">~{m.approx_ram_gb} GB</span>
+					</span>
 				</li>
 			{/each}
 		</ul>
+		<p class="legend">
+			<span class="dot served"></span> served
+			<span class="dot runnable"></span> runnable
+			<span class="dot too_big"></span> needs a bigger worker
+		</p>
 	{/if}
 </section>
 
@@ -147,23 +170,88 @@
 	.models li {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.4rem 0.6rem;
+		gap: 0.7rem;
+		padding: 0.45rem 0.6rem;
 		border: 1px solid #1a2336;
 		border-radius: 6px;
 		background: #0c1322;
 	}
-	.model-id {
+	.models li.dim {
+		opacity: 0.6;
+	}
+	.dot {
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		flex: none;
+	}
+	.dot.served {
+		background: #34d399;
+	}
+	.dot.runnable {
+		background: transparent;
+		border: 1.5px solid #4b9fd6;
+	}
+	.dot.unknown {
+		background: transparent;
+		border: 1.5px solid #55607a;
+	}
+	.dot.too_big {
+		background: #3a4358;
+	}
+	.name {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		min-width: 0;
+		flex: 1;
+	}
+	.display {
 		color: #e6e9f0;
+		font-size: 0.9rem;
+		font-weight: 500;
+	}
+	.model-id {
+		color: #8b93a7;
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		font-size: 0.85rem;
+		font-size: 0.72rem;
 		word-break: break-all;
 	}
-	.count {
-		color: #8b93a7;
-		font-size: 0.8rem;
+	.meta {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.1rem;
 		white-space: nowrap;
+	}
+	.status-note {
+		color: #b8bfd0;
+		font-size: 0.78rem;
+	}
+	.ram {
+		color: #8b93a7;
+		font-size: 0.72rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.legend {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+		color: #8b93a7;
+		font-size: 0.75rem;
+		margin: 0.75rem 0 0;
+	}
+	.legend .dot {
+		margin-left: 0.6rem;
+	}
+	.legend .dot:first-child {
+		margin-left: 0;
+	}
+	.sub .dot {
+		display: inline-block;
+		vertical-align: middle;
+		margin: 0 0.1rem;
 	}
 	.kinds-intro {
 		color: #e6e9f0;
