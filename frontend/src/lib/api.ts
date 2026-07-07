@@ -521,19 +521,20 @@ export interface CatalogEntry {
 	worker_count: number;
 }
 
-export type SupportedStatus = 'served' | 'runnable' | 'too_big' | 'unknown';
+export type SupportedStatus = 'available' | 'runnable' | 'too_big' | 'unknown';
 
 export interface SupportedEntry {
 	model_id: string;
 	display_name: string;
 	family: string;
-	param_b: number;
+	param_b: number | null;
 	quant: string;
-	approx_ram_gb: number;
-	served_worker_count: number;
+	approx_ram_gb: number | null;
+	on_worker_count: number;
 	fits_worker_count: number;
 	ram_known_workers: number;
 	status: SupportedStatus;
+	in_catalog: boolean;
 }
 
 export interface ModelRequest {

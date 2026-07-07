@@ -4,10 +4,9 @@
 	import ErrorState from '$lib/components/ErrorState.svelte';
 
 	// The in-app demand-board was retired (design D2): requests live on the
-	// AuspexAI community forum — GitHub Discussions — a public, votable place
-	// maintainers triage alongside the code. This page is the launchpad, led by
-	// the full menu of models the network supports (the green dot marks what's
-	// loaded on a worker right now) so you always know what you could work with.
+	// AuspexAI community forum — GitHub Discussions. This page is the launchpad,
+	// led by (1) what's ON the fleet right now and (2) the curated set the
+	// network can provision on demand.
 	const DISCUSSIONS = 'https://github.com/auspexai/.github/discussions';
 	const NEW = 'https://github.com/auspexai/.github/discussions/new/choose';
 
@@ -16,80 +15,107 @@
 	let autoAcquire = $state(false);
 	let error = $state<ApiError | null>(null);
 
+	// Two honest layers: on the fleet now (available) vs. provisionable.
+	let onFleet = $derived((models ?? []).filter((m) => m.status === 'available'));
+	let provisionable = $derived((models ?? []).filter((m) => m.status !== 'available'));
+
 	onMount(async () => {
 		try {
 			const data = await api.getSupported();
 			totalWorkers = data.total_active_workers ?? 0;
 			autoAcquire = data.fleet_can_auto_acquire ?? false;
-			models = data.models ?? []; // coordinator already sorts served → runnable → unknown → too_big
+			models = data.models ?? []; // coordinator pre-sorts within each layer
 		} catch (e) {
 			error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
 		}
 	});
 
-	function note(m: SupportedEntry): string {
-		switch (m.status) {
-			case 'served':
-				return `served on ${m.served_worker_count} worker${m.served_worker_count === 1 ? '' : 's'}`;
-			case 'runnable':
-				return m.fits_worker_count > 0
-					? `runnable · fits ${m.fits_worker_count} worker${m.fits_worker_count === 1 ? '' : 's'}`
-					: 'runnable';
-			case 'too_big':
-				return `needs a worker with ≥${m.approx_ram_gb} GB`;
-			default:
-				return 'available';
-		}
+	function fleetNote(m: SupportedEntry): string {
+		return `on ${m.on_worker_count} worker${m.on_worker_count === 1 ? '' : 's'}`;
 	}
+	function provNote(m: SupportedEntry): string {
+		if (m.status === 'too_big') return `needs a worker with ≥${m.approx_ram_gb} GB`;
+		if (m.status === 'runnable')
+			return m.fits_worker_count > 0
+				? `runnable · fits ${m.fits_worker_count} worker${m.fits_worker_count === 1 ? '' : 's'}`
+				: 'runnable';
+		return 'capacity unknown';
+	}
+	const ram = (m: SupportedEntry) => (m.approx_ram_gb != null ? `~${m.approx_ram_gb} GB` : '');
 </script>
 
 <h1>Requests</h1>
 <p class="lead">
-	Every model the network can run — the green dot marks what's loaded on a worker right now.
-	Everything else is still runnable{autoAcquire ? ' (workers pull models on demand)' : ''}. For a
-	model that isn't here, open a request on the AuspexAI community forum.
+	What you can run on the network: the models already loaded on a worker, plus the curated set the
+	fleet can provision on demand. For anything else, open a request on the AuspexAI community forum.
 </p>
 
-<section class="card">
-	<div class="card-head">
-		<h2>Models you can run</h2>
-		{#if totalWorkers !== null && !error}
-			<span class="pill">{totalWorkers} active worker{totalWorkers === 1 ? '' : 's'}</span>
-		{/if}
-	</div>
-	<p class="sub">
-		The full set the network supports. A <span class="dot served" aria-hidden="true"></span>
-		green dot means it's being served right now — no wait. The rest are still available to your
-		experiments.
-	</p>
-
-	{#if error}
-		<ErrorState {error} />
-	{:else if models === null}
-		<p class="muted">Loading…</p>
-	{:else}
-		<ul class="models">
-			{#each models as m (m.model_id)}
-				<li class:dim={m.status === 'too_big'}>
-					<span class="dot {m.status}" title={m.status} aria-label={m.status}></span>
-					<span class="name">
-						<span class="display">{m.display_name}</span>
-						<span class="model-id">{m.model_id}</span>
-					</span>
-					<span class="meta">
-						<span class="status-note">{note(m)}</span>
-						<span class="ram">~{m.approx_ram_gb} GB</span>
-					</span>
-				</li>
-			{/each}
-		</ul>
-		<p class="legend">
-			<span class="dot served"></span> served
-			<span class="dot runnable"></span> runnable
-			<span class="dot too_big"></span> needs a bigger worker
+{#if error}
+	<div class="card"><ErrorState {error} /></div>
+{:else if models === null}
+	<div class="card"><p class="muted">Loading…</p></div>
+{:else}
+	<section class="card">
+		<div class="card-head">
+			<h2>On the fleet now</h2>
+			{#if totalWorkers !== null}
+				<span class="pill">{totalWorkers} active worker{totalWorkers === 1 ? '' : 's'}</span>
+			{/if}
+		</div>
+		<p class="sub">
+			Models a worker already holds — ready to run, no download. The count is a rough availability
+			signal: more workers means more capacity and corroboration.
 		</p>
-	{/if}
-</section>
+		{#if onFleet.length === 0}
+			<p class="muted">No models are loaded on an active worker right now.</p>
+		{:else}
+			<ul class="models">
+				{#each onFleet as m (m.model_id)}
+					<li>
+						<span class="dot available" title="available" aria-label="available"></span>
+						<span class="name">
+							<span class="display">{m.display_name}</span>
+							{#if m.display_name !== m.model_id}<span class="model-id">{m.model_id}</span>{/if}
+						</span>
+						<span class="meta">
+							<span class="status-note">{fleetNote(m)}</span>
+							{#if ram(m)}<span class="rm">{ram(m)}</span>{/if}
+						</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+
+	<section class="card">
+		<h2>Also provisionable</h2>
+		<p class="sub">
+			The curated set the network can pull on demand{autoAcquire
+				? ' (workers acquire models automatically)'
+				: ''}. <span class="dot runnable"></span> runnable on the current fleet ·
+			<span class="dot too_big"></span> would need a bigger worker than any online.
+		</p>
+		{#if provisionable.length === 0}
+			<p class="muted">Everything in the curated set is already on the fleet.</p>
+		{:else}
+			<ul class="models">
+				{#each provisionable as m (m.model_id)}
+					<li class:dim={m.status === 'too_big'}>
+						<span class="dot {m.status}" title={m.status} aria-label={m.status}></span>
+						<span class="name">
+							<span class="display">{m.display_name}</span>
+							{#if m.display_name !== m.model_id}<span class="model-id">{m.model_id}</span>{/if}
+						</span>
+						<span class="meta">
+							<span class="status-note">{provNote(m)}</span>
+							{#if ram(m)}<span class="rm">{ram(m)}</span>{/if}
+						</span>
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+{/if}
 
 <div class="card">
 	<p class="kinds-intro">Don't see what you need? Two kinds of request:</p>
@@ -177,7 +203,7 @@
 		background: #0c1322;
 	}
 	.models li.dim {
-		opacity: 0.6;
+		opacity: 0.55;
 	}
 	.dot {
 		width: 9px;
@@ -185,7 +211,7 @@
 		border-radius: 50%;
 		flex: none;
 	}
-	.dot.served {
+	.dot.available {
 		background: #34d399;
 	}
 	.dot.runnable {
@@ -210,6 +236,7 @@
 		color: #e6e9f0;
 		font-size: 0.9rem;
 		font-weight: 500;
+		word-break: break-all;
 	}
 	.model-id {
 		color: #8b93a7;
@@ -228,30 +255,20 @@
 		color: #b8bfd0;
 		font-size: 0.78rem;
 	}
-	.ram {
+	.rm {
 		color: #8b93a7;
 		font-size: 0.72rem;
 		font-variant-numeric: tabular-nums;
 	}
-	.legend {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		flex-wrap: wrap;
-		color: #8b93a7;
-		font-size: 0.75rem;
-		margin: 0.75rem 0 0;
-	}
-	.legend .dot {
-		margin-left: 0.6rem;
-	}
-	.legend .dot:first-child {
-		margin-left: 0;
-	}
 	.sub .dot {
 		display: inline-block;
 		vertical-align: middle;
-		margin: 0 0.1rem;
+		margin: 0 0.05rem 0 0.35rem;
+	}
+	.muted {
+		color: #8b93a7;
+		font-size: 0.85rem;
+		max-width: 64ch;
 	}
 	.kinds-intro {
 		color: #e6e9f0;
@@ -296,11 +313,6 @@
 	}
 	a.ghost:hover {
 		border-color: #3a4668;
-	}
-	.muted {
-		color: #8b93a7;
-		font-size: 0.85rem;
-		max-width: 64ch;
 	}
 	.note {
 		margin-top: 1rem;
