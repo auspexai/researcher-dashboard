@@ -13,6 +13,8 @@
 	let models = $state<SupportedEntry[] | null>(null);
 	let totalWorkers = $state<number | null>(null);
 	let autoAcquire = $state(false);
+	let catalogSource = $state<'hf' | 'curated' | null>(null);
+	let catalogFetchedAt = $state<string | null>(null);
 	let error = $state<ApiError | null>(null);
 
 	// Two honest layers: on the fleet now (available) vs. provisionable.
@@ -24,6 +26,8 @@
 			const data = await api.getSupported();
 			totalWorkers = data.total_active_workers ?? 0;
 			autoAcquire = data.fleet_can_auto_acquire ?? false;
+			catalogSource = data.catalog_source ?? null;
+			catalogFetchedAt = data.catalog_fetched_at ?? null;
 			models = data.models ?? []; // coordinator pre-sorts within each layer
 		} catch (e) {
 			error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
@@ -42,6 +46,13 @@
 		return 'capacity unknown';
 	}
 	const ram = (m: SupportedEntry) => (m.approx_ram_gb != null ? `~${m.approx_ram_gb} GB` : '');
+	function refreshedNote(): string {
+		if (catalogSource !== 'hf' || !catalogFetchedAt) return '';
+		const d = new Date(catalogFetchedAt);
+		return Number.isNaN(d.getTime())
+			? ''
+			: d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+	}
 </script>
 
 <h1>Requests</h1>
@@ -90,11 +101,14 @@
 	<section class="card">
 		<h2>Also provisionable</h2>
 		<p class="sub">
-			The curated set the network can pull on demand{autoAcquire
+			Models the network can pull on demand{autoAcquire
 				? ' (workers acquire models automatically)'
 				: ''}. <span class="dot runnable"></span> runnable on the current fleet ·
 			<span class="dot too_big"></span> would need a bigger worker than any online.
 		</p>
+		{#if refreshedNote()}
+			<p class="fresh">Polled from Hugging Face · refreshed {refreshedNote()}</p>
+		{/if}
 		{#if provisionable.length === 0}
 			<p class="muted">Everything in the curated set is already on the fleet.</p>
 		{:else}
@@ -184,6 +198,12 @@
 		font-size: 0.85rem;
 		margin: 0.35rem 0 0.9rem;
 		max-width: 60ch;
+	}
+	.fresh {
+		color: #6f788f;
+		font-size: 0.75rem;
+		margin: -0.5rem 0 0.9rem;
+		font-variant-numeric: tabular-nums;
 	}
 	.models {
 		list-style: none;

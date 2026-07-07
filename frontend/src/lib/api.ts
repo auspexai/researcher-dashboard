@@ -535,6 +535,7 @@ export interface SupportedEntry {
 	ram_known_workers: number;
 	status: SupportedStatus;
 	in_catalog: boolean;
+	hf_repo: string | null;
 }
 
 export interface ModelRequest {
@@ -743,6 +744,8 @@ export const api = {
 			models?: SupportedEntry[];
 			total_active_workers?: number;
 			fleet_can_auto_acquire?: boolean;
+			catalog_source?: 'hf' | 'curated';
+			catalog_fetched_at?: string | null;
 		}>('/api/v0/supported'),
 	listModelRequests: () =>
 		getJson<{ requests?: ModelRequest[] }>('/api/v0/model-requests'),
