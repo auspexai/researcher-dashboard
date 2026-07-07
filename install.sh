@@ -279,11 +279,24 @@ _run_worker_installer() {
 if (exec </dev/tty) 2>/dev/null; then
   if command -v auspexai-worker >/dev/null 2>&1; then
     WORKER_VER="$(auspexai-worker --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo '?')"
-    printf 'Also update the AuspexAI worker on this machine? (installed: %s) [Y/n]: ' "$WORKER_VER"
+    # Name the TARGET, not just the installed version — the installer always
+    # pulls the latest, and showing only "(installed: X)" reads as "installs X".
+    WORKER_LATEST="$(_fetch_with_retry "https://api.github.com/repos/auspexai/worker/releases/latest" 2>/dev/null | sed -nE 's/.*"tag_name": *"v?([^"]+)".*/\1/p' | head -1)"
+    if [ -n "$WORKER_LATEST" ] && [ "$WORKER_VER" = "$WORKER_LATEST" ]; then
+      printf 'The AuspexAI worker is already current (%s) — reinstall it too? [y/N]: ' "$WORKER_VER"
+      WORKER_DEFAULT="n"
+    elif [ -n "$WORKER_LATEST" ]; then
+      printf 'Also update the AuspexAI worker on this machine? (installed %s → latest %s) [Y/n]: ' "$WORKER_VER" "$WORKER_LATEST"
+      WORKER_DEFAULT="y"
+    else
+      printf 'Also update the AuspexAI worker on this machine? (installed %s; installs the latest) [Y/n]: ' "$WORKER_VER"
+      WORKER_DEFAULT="y"
+    fi
     read -r ANSWER </dev/tty || ANSWER=""
+    [ -z "$ANSWER" ] && ANSWER="$WORKER_DEFAULT"
     case "$ANSWER" in
-      n|N|no|NO) say "kept the current worker — update anytime: curl -fsSL https://getworker.auspexai.network | bash" ;;
-      *) _run_worker_installer ;;
+      y|Y|yes|YES) _run_worker_installer ;;
+      *) say "kept the current worker — update anytime: curl -fsSL https://getworker.auspexai.network | bash" ;;
     esac
   else
     printf 'Also contribute compute? Install the AuspexAI worker on this machine too [y/N]: '
