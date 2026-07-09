@@ -49,10 +49,12 @@
 		Profiles (<code>--profile starter</code> / <code>research</code>) select named config
 		override-sets — the starter is certified <em>and pre-registered</em> (its design is anchored
 		before data exists); runs appear on <a href="/experiments">My Experiments</a> once the
-		coordinator accepts them. If your analysis genuinely changes after you've seen data, declare
-		it honestly: <code>auspexai-tenant experiment deviate latest --what "…" --why "…"</code> —
-		an append-only, signed record; exploratory analysis is welcome, it just can't masquerade as
-		confirmatory.
+		coordinator accepts them. <code>launch</code> drives for the whole run, so for a long run or
+		several at once add <code>--detach</code> to background the driver (survives the terminal — no
+		tmux/nohup) and manage them with <code>experiment ps</code> / <code>experiment stop</code>. If
+		your analysis genuinely changes after you've seen data, declare it honestly:
+		<code>auspexai-tenant experiment deviate latest --what "…" --why "…"</code> — an append-only,
+		signed record; exploratory analysis is welcome, it just can't masquerade as confirmatory.
 	</p>
 </section>
 
