@@ -202,7 +202,10 @@
 			class:done-bad={aborted}
 		></div>
 		<h3>Activity</h3>
-		<span class="status">{experiment.status ?? 'unknown'}</span>
+		<!-- Show the canonical run_phase (running / stalled / capped / queued …) so
+		     the monitor agrees with the list badge + detail badge; fall back to the
+		     bare status until the activity rollup lands. -->
+		<span class="status">{(activity?.run_phase ?? experiment.status)?.replace(/_/g, ' ') ?? 'unknown'}</span>
 	</header>
 
 	<!-- the pulse strip: one bar per sampled interval, height ∝ units that interval -->

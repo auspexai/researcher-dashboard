@@ -95,6 +95,11 @@
 	let pubModal = $state<'benchmark' | 'doi' | null>(null);
 	let pubBusy = $state(false);
 	let pubResult = $state<string | null>(null);
+	let pubOk = $state<boolean | null>(null); // last action outcome: true=success, false=error
+	// Idempotency: once published/minted, the action is done — reflect it (disable +
+	// show the record) so a researcher can't send a duplicate (a gaming vector).
+	const benchmarked = $derived(pubs.some((p) => p.kind === 'benchmark'));
+	const mintedDoi = $derived(pubs.find((p) => p.kind === 'doi' && p.doi)?.doi ?? null);
 	async function loadPublications() {
 		if (!id) return;
 		try {
@@ -115,11 +120,13 @@
 		try {
 			const r = await api.publishBenchmark(id);
 			pubResult = r.pr
-				? `submitted — admission PR: ${r.pr}`
-				: `submission status: ${r.status}`;
+				? `Published — admission PR: ${r.pr}`
+				: `Published (status: ${r.status})`;
+			pubOk = true;
 			await loadPublications();
 		} catch (e) {
-			pubResult = e instanceof Error ? e.message : String(e);
+			pubResult = pubErrorText(e);
+			pubOk = false;
 		} finally {
 			pubBusy = false;
 			pubModal = null;
@@ -131,14 +138,23 @@
 		pubResult = null;
 		try {
 			const r = await api.mintDoi(id);
-			pubResult = r.doi ? `DOI minted: ${r.doi} (${r.mode})` : 'mint returned no DOI';
+			pubResult = r.doi ? `DOI minted: ${r.doi} (${r.mode})` : 'Mint returned no DOI';
+			pubOk = !!r.doi;
 			await loadPublications();
 		} catch (e) {
-			pubResult = e instanceof Error ? e.message : String(e);
+			pubResult = pubErrorText(e);
+			pubOk = false;
 		} finally {
 			pubBusy = false;
 			pubModal = null;
 		}
+	}
+	// Surface the coordinator's reason clearly (the feedback gap: a 409 like
+	// `doi_already_minted` / `benchmark_publication_required` must be legible, not
+	// a silent no-op that looks like maybe-sent).
+	function pubErrorText(e: unknown): string {
+		if (e instanceof ApiError) return e.message || e.kind || 'request failed';
+		return e instanceof Error ? e.message : String(e);
 	}
 
 	let bench = $state<ExperimentBenchmarks | null>(null);
@@ -523,7 +539,7 @@
 {:else if experiment}
 	<div class="head">
 		<h1>{experiment.tenant_experiment_label ?? experiment.experiment_id}</h1>
-		<StatusBadge status={experiment.status} />
+		<StatusBadge status={experiment.status} phase={experiment.run_phase} />
 		<!-- D12: 'approved' is overloaded for queued-vs-running. When the run is
 		     approved but not yet started (no worker has picked it up), show a
 		     glanceable queued badge with its place in line; the liveness-note below
@@ -1303,19 +1319,19 @@
 				<div class="pub-actions">
 					<button
 						class="act"
-						disabled={standing == null || standing < 1 || pubBusy}
+						disabled={standing == null || standing < 1 || pubBusy || benchmarked}
 						onclick={() => (pubModal = 'benchmark')}
 						title="Publish this score to the public board — signed with your tenant key; authorization and audit recorded coordinator-side."
 					>
-						Publish benchmark…
+						{benchmarked ? '✓ Benchmark published' : 'Publish benchmark…'}
 					</button>
 					<button
 						class="act"
-						disabled={standing == null || standing < 3 || pubBusy}
+						disabled={standing == null || standing < 3 || pubBusy || !!mintedDoi}
 						onclick={() => (pubModal = 'doi')}
 						title="Mint a citable DOI for this experiment (metadata + verification anchors only)."
 					>
-						Mint DOI…
+						{mintedDoi ? '✓ DOI minted' : 'Mint DOI…'}
 					</button>
 					{#if standing != null && standing < 1}
 						<span class="muted small">publishing requires research standing R1+ (yours: R{standing}) — verify your identity first</span>
@@ -1323,7 +1339,11 @@
 						<span class="muted small">DOI issuance requires R3 (yours: R{standing})</span>
 					{/if}
 				</div>
-				{#if pubResult}<p class="muted small">{pubResult}</p>{/if}
+				{#if pubResult}
+					<p class="pub-result" class:ok={pubOk === true} class:err={pubOk === false}>
+						{pubOk === true ? '✓ ' : pubOk === false ? '✕ ' : ''}{pubResult}
+					</p>
+				{/if}
 				{#if pubs.length}
 					<div class="pub-records">
 						{#each pubs as p2 (p2.record_id)}
@@ -1462,6 +1482,23 @@
 		gap: 0.6rem;
 		margin: 0.8rem 0 0.4rem;
 		flex-wrap: wrap;
+	}
+	.pub-result {
+		margin: 0.5rem 0;
+		padding: 0.5rem 0.75rem;
+		border-radius: 6px;
+		font-size: 0.9rem;
+		border: 1px solid var(--border, #d9d8d4);
+	}
+	.pub-result.ok {
+		color: #1a7f37;
+		background: #eaf6ec;
+		border-color: #b7e0be;
+	}
+	.pub-result.err {
+		color: #b3261e;
+		background: #fbeae9;
+		border-color: #f0c2be;
 	}
 	.pub-confirm {
 		border: 1px solid var(--border, #d9d8d4);
