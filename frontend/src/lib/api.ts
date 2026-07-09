@@ -84,7 +84,9 @@ export type ExperimentStatus =
 	| (string & {});
 
 // Mirrors the coordinator's tenant-scoped ExperimentResponse — the fields an
-// owning researcher sees (operator-only fields like max_units never arrive).
+// owning researcher sees. The approved resource bounds (replication, max_units,
+// per-unit duration) are tenant-scoped so the researcher can see the envelope
+// approval set — and whether it differs from what was submitted.
 export interface Experiment {
 	experiment_id: string;
 	tenant_id?: string;
@@ -103,6 +105,15 @@ export interface Experiment {
 	manifest_hash?: string;
 	revision?: number;
 	integrity_policy?: string;
+	// Approved resource bounds (set at approval; visible from then on). The
+	// declared_* / expected_* fields are what the manifest asked for, so the page
+	// can show approved-vs-submitted differences.
+	replication_target?: number | null;
+	replication_floor?: number | null;
+	declared_replication_factor?: number | null;
+	max_units?: number | null;
+	max_concurrent_assignments?: number | null;
+	capable_worker_count?: number | null;
 	max_unit_duration_seconds?: number;
 	// M-Results retention state (tenant-scoped).
 	retention_hold?: boolean;

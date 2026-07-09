@@ -685,6 +685,61 @@
 			</div>
 		{/if}
 	</section>
+
+	{#if experiment.status !== 'submitted' && (experiment.replication_target != null || experiment.max_units != null)}
+		{@const declRepl = experiment.declared_replication_factor}
+		{@const apprRepl = experiment.replication_target}
+		{@const cap = experiment.max_units}
+		{@const durH = experiment.expected_duration_hours}
+		<section class="approved">
+			<h3>Approved run parameters</h3>
+			<p class="approved-note">
+				The envelope a maintainer approved this run with (set at approval, in force for the
+				whole run). Flagged where it differs from what you submitted.
+			</p>
+			<div class="grid">
+				<div class="field">
+					<span class="k">Replication</span>
+					<span class="v">
+						target ×{apprRepl ?? '—'} · floor {experiment.replication_floor ?? '—'}
+						{#if declRepl != null && apprRepl != null && declRepl !== apprRepl}
+							<span class="badge warn">you submitted ×{declRepl}</span>
+						{/if}
+					</span>
+				</div>
+				{#if cap != null}
+					<div class="field">
+						<span class="k">Max work units</span>
+						<span class="v">
+							{cap}
+							{#if durH}
+								<span class="badge warn"
+									>caps a {durH}h run — at a back-to-back pace this may stop it before {durH}h</span
+								>
+							{/if}
+						</span>
+					</div>
+				{/if}
+				{#if experiment.max_unit_duration_seconds != null}
+					<div class="field">
+						<span class="k">Max unit duration</span>
+						<span class="v">{experiment.max_unit_duration_seconds}s</span>
+					</div>
+				{/if}
+				{#if durH}
+					<div class="field">
+						<span class="k">Duration (submitted)</span><span class="v">{durH}h</span>
+					</div>
+				{/if}
+				{#if experiment.max_concurrent_assignments != null}
+					<div class="field">
+						<span class="k">Max concurrent</span>
+						<span class="v">{experiment.max_concurrent_assignments}</span>
+					</div>
+				{/if}
+			</div>
+		</section>
+	{/if}
 	{/if}
 
 	{#if tab === 'evidence'}
@@ -1607,6 +1662,27 @@
 		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 		gap: 0.75rem;
 		margin: 1.25rem 0;
+	}
+	.approved {
+		border: 1px solid #1e2638;
+		border-radius: 8px;
+		background: #0b1120;
+		padding: 0.9rem 1rem 0.4rem;
+		margin: 1.25rem 0;
+	}
+	.approved h3 {
+		margin: 0;
+		font-size: 0.95rem;
+		color: #e6e9f0;
+	}
+	.approved-note {
+		margin: 0.3rem 0 0;
+		font-size: 0.78rem;
+		color: #8b93a7;
+		line-height: 1.4;
+	}
+	.approved .grid {
+		margin: 0.75rem 0 0.5rem;
 	}
 	.field {
 		border: 1px solid #1e2638;
