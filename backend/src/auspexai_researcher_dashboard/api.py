@@ -12,6 +12,7 @@ A `CoordinatorError` is rendered as a stable error envelope the SPA branches on:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -177,6 +178,16 @@ def _shape_verification(v: BundleVerification, bundle: dict[str, Any]) -> dict[s
     return {"ok": v.ok, "checks": checks, "rekor": _rekor_status(bundle)}
 
 
+def _version_key(v: str | None) -> tuple[int, ...]:
+    """Numeric version tuple for comparison (ignores any pre-release suffix)."""
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:4])
+
+
+def _component_update(current: str | None, latest: str | None) -> dict[str, Any]:
+    available = bool(current and latest and _version_key(latest) > _version_key(current))
+    return {"current": current, "latest": latest, "update_available": available}
+
+
 def build_api_router() -> APIRouter:
     router = APIRouter(prefix="/api/v0")
 
@@ -220,6 +231,37 @@ def build_api_router() -> APIRouter:
         except CoordinatorError as e:
             return _envelope(e)
         return JSONResponse(content=data)
+
+    @router.get("/updates")
+    async def updates(request: Request) -> JSONResponse:
+        """Update-available check (mirrors the worker's update notice): compare the
+        running R-D + installed tenant-sdk versions against the latest announced on
+        the coordinator (channels 'researcher-dashboard' / 'tenant-sdk'). Best-
+        effort — a coordinator hiccup yields latest=null (no banner), never an error."""
+        from importlib.metadata import PackageNotFoundError
+        from importlib.metadata import version as _pkg_version
+
+        from . import __version__ as rd_version
+
+        try:
+            sdk_version: str | None = _pkg_version("auspexai-tenant")
+        except PackageNotFoundError:
+            sdk_version = None
+
+        async def _latest(channel: str) -> str | None:
+            try:
+                data = await _client(request).get_json(f"/api/v0/releases?channel={channel}")
+                vers = [r.get("version") for r in (data.get("releases") or []) if r.get("version")]
+                return max(vers, key=_version_key) if vers else None
+            except Exception:
+                return None
+
+        return JSONResponse(
+            {
+                "dashboard": _component_update(rd_version, await _latest("researcher-dashboard")),
+                "sdk": _component_update(sdk_version, await _latest("tenant-sdk")),
+            }
+        )
 
     @router.post("/accounts/orcid/start")
     async def orcid_link_start(request: Request) -> JSONResponse:

@@ -647,7 +647,19 @@ export interface RunStatus {
 	log_tail?: string;
 }
 
+export interface UpdateInfo {
+	current: string | null;
+	latest: string | null;
+	update_available: boolean;
+}
+export interface UpdatesResponse {
+	dashboard: UpdateInfo;
+	sdk: UpdateInfo;
+}
+
 export const api = {
+	// Update-available check (dashboard + tenant-sdk vs the coordinator's latest).
+	updates: () => getJson<UpdatesResponse>('/api/v0/updates'),
 	listExperiments: () => getJson<{ experiments?: Experiment[] }>('/api/v0/experiments'),
 	getExperiment: (id: string) =>
 		getJson<Experiment>(`/api/v0/experiments/${encodeURIComponent(id)}`),

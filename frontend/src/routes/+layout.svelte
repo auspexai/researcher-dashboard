@@ -1,9 +1,11 @@
 <script lang="ts">
 	import Nav from '$lib/components/Nav.svelte';
+	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 	let { children } = $props();
 </script>
 
 <Nav />
+<UpdateBanner />
 <main>
 	{@render children()}
 </main>
