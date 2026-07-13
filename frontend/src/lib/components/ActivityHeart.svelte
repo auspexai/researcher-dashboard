@@ -151,6 +151,12 @@
 				target ? ` of ${target}` : ''
 			}`;
 		if (!live) return `${experiment.status} · awaiting the network`;
+		// A backing worker pulling the model — the most specific live state (a
+		// multi-GB first-serve legitimately precedes the first beat).
+		if (downloading)
+			return downloadPct != null
+				? `provisioning · downloading ${downloadModel} · ${downloadPct}%`
+				: `provisioning · downloading ${downloadModel}…`;
 		// D12: an approved-but-never-started run is queued behind capacity, not
 		// "between beats" — say so (and where it is in line) instead of an
 		// indefinite "waiting for the first beat…".
@@ -179,6 +185,15 @@
 		live && nextBeatT != null && nextBeatT - now > 0 && (sinceLastBeatMs ?? 0) > 4000
 	);
 	const pct = $derived(target > 0 ? Math.min(100, Math.round((completions / target) * 100)) : null);
+
+	// D12 5c: a backing worker is pulling a required model (provisioning to serve).
+	// The coordinator surfaces this regardless of run_phase — a lazy in-line
+	// auto-acquire happens while the experiment is already "running" (its first
+	// unit sits in_progress on the downloading worker), not only while queued — so
+	// the heart shows the pull instead of a mute "listening for the first beat…".
+	const downloading = $derived(activity?.download_progress ?? null);
+	const downloadPct = $derived<number | null>(downloading?.pct ?? null);
+	const downloadModel = $derived(downloading?.model_id ?? 'model');
 </script>
 
 {#if terminal}
@@ -196,8 +211,8 @@
 	<header>
 		<div
 			class="pulse-dot"
-			class:beating={live && !betweenBeats}
-			class:between={betweenBeats}
+			class:beating={live && !betweenBeats && !downloading}
+			class:between={betweenBeats || !!downloading}
 			class:done-ok={completed}
 			class:done-bad={aborted}
 		></div>
@@ -210,7 +225,18 @@
 
 	<!-- the pulse strip: one bar per sampled interval, height ∝ units that interval -->
 	<div class="strip" role="img" aria-label="activity pulse">
-		{#if beats.length === 0}
+		{#if beats.length === 0 && downloading}
+			<!-- No beats yet because the worker is still pulling the model — show the
+			     download instead of a mute "listening…". -->
+			<div class="dl">
+				{#if downloadPct != null}
+					<div class="dl-bar"><div class="dl-fill" style="width: {downloadPct}%"></div></div>
+				{/if}
+				<span class="dl-label"
+					>downloading {downloadModel}{downloadPct != null ? ` · ${downloadPct}%` : '…'}</span
+				>
+			</div>
+		{:else if beats.length === 0}
 			<p class="empty">{terminal ? 'run complete' : 'listening for the first beat…'}</p>
 		{:else}
 			{#each beats as b (b.t)}
@@ -392,6 +418,33 @@
 		margin: auto;
 		color: #5b6478;
 		font-size: 0.8rem;
+	}
+	/* D12 5c: in-flight model download, in place of the empty "listening…" strip. */
+	.dl {
+		margin: auto;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.4rem;
+		width: 100%;
+		max-width: 320px;
+		padding: 0 0.75rem;
+	}
+	.dl-bar {
+		width: 100%;
+		height: 6px;
+		background: #1a2236;
+		border-radius: 999px;
+		overflow: hidden;
+	}
+	.dl-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #155e6b, #67e8f9);
+		transition: width 0.5s ease;
+	}
+	.dl-label {
+		font-size: 0.78rem;
+		color: #9aa3b8;
 	}
 	.narration {
 		margin: 0;
