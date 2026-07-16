@@ -55,9 +55,21 @@ async function request<T>(path: string, method: 'GET' | 'POST', payload?: unknow
 		/* non-JSON body — leave null */
 	}
 	if (!resp.ok) {
-		const err = (body as { error?: { kind?: ErrorKind; message?: string; coordinator_status?: number | null } } | null)?.error;
-		if (err?.kind) {
-			throw new ApiError(err.kind, err.message ?? 'request failed', err.coordinator_status ?? null);
+		const err = (
+			body as {
+				error?: { kind?: ErrorKind; code?: string; message?: string; coordinator_status?: number | null };
+			} | null
+		)?.error;
+		// Surface the typed reason whenever the envelope carries a message — the
+		// coordinator proxy keys errors by `kind`, but the dashboard's own handlers
+		// (e.g. publish-benchmark) key them by `code`. Keying only on `kind` swallowed
+		// those into a bare "request failed (HTTP 409)", hiding "score the run first".
+		if (err && (err.kind || err.message)) {
+			throw new ApiError(
+				err.kind ?? 'client_error',
+				err.message ?? `request failed (HTTP ${resp.status})`,
+				err.coordinator_status ?? null
+			);
 		}
 		throw new ApiError('client_error', `request failed (HTTP ${resp.status})`);
 	}
