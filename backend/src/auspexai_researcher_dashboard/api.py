@@ -82,6 +82,9 @@ def _scan_benchmark_records(bases: Path | list[Path]) -> list[dict[str, Any]]:
     for base in [bases] if isinstance(bases, Path) else bases:
         try:
             candidates.extend(sorted(base.glob("*/benchmark_vs_*.json")))
+            # Self-baseline records score a run against its OWN first-K rounds
+            # (no reference experiment) — saved as benchmark_self.json.
+            candidates.extend(sorted(base.glob("*/benchmark_self.json")))
         except OSError:
             continue
     for path in candidates:
@@ -504,6 +507,75 @@ def build_api_router() -> APIRouter:
             pass
         return record, None
 
+    async def _compute_self_benchmark(
+        request: Request,
+        experiment_id: str,
+        baseline_rounds: int,
+        calibrate_envelope: bool,
+        label: str | None,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Self-baseline Drift Benchmark: collect + verify THIS run's bundle and score
+        it against its OWN first-K rounds (`drift_benchmark_self`) — no reference
+        experiment. Persisted as benchmark_self.json beside the run. Returns
+        (record, None) or (None, why-it-could-not-score)."""
+        from datetime import UTC, datetime
+
+        from auspexai_tenant.benchmark import drift_benchmark_self
+
+        if baseline_rounds <= 0:
+            return None, (
+                "self-baseline is declared but baseline_rounds is 0 — there is no baseline "
+                "window to score the run against"
+            )
+        client = _client(request)
+        try:
+            bundle = await client.get_json(f"/api/v0/experiments/{experiment_id}/results/export")
+        except CoordinatorError as e:
+            return None, f"could not collect the evidence bundle: {e}"
+        try:
+            v = await run_in_threadpool(verify_bundle, bundle)
+            ok = bool(v.ok)
+        except Exception:
+            ok = False
+        if not ok:
+            return None, (
+                "the evidence bundle failed verification — the benchmark scores only "
+                "custody-verified evidence"
+            )
+        try:
+            report = await run_in_threadpool(
+                drift_benchmark_self,
+                bundle,
+                baseline_rounds,
+                calibrate_envelope=calibrate_envelope,
+            )
+        except ValueError as e:
+            return None, str(e)
+        record: dict[str, Any] = {
+            "schema": "auspexai-drift-benchmark-report/v0",
+            "computed_at": datetime.now(UTC).isoformat(),
+            "observation": {
+                "experiment_id": experiment_id,
+                "label": label or (bundle.get("manifest") or {}).get("experiment_id"),
+            },
+            "reference": {
+                "self_baseline": {
+                    "baseline_rounds": baseline_rounds,
+                    "calibrate_envelope": calibrate_envelope,
+                },
+            },
+            "report": report.to_dict(),
+        }
+        try:
+            layout = RunLayout(label or experiment_id, base=_runs_base(request.app.state.config))
+            layout.ensure()
+            path = layout.bundle_path().parent / "benchmark_self.json"
+            path.write_text(json.dumps(record, indent=2))
+            record["path"] = str(path)
+        except (OSError, ValueError):
+            pass
+        return record, None
+
     @router.get("/experiments/{experiment_id}/benchmarks")
     async def experiment_benchmarks(
         request: Request, experiment_id: str, label: str | None = None
@@ -529,20 +601,37 @@ def build_api_router() -> APIRouter:
             _runs_bases(request.app.state.config), experiment_id
         )
         materialize_error: str | None = None
-        if declaration and not any(
-            (r.get("reference") or {}).get("experiment_id")
-            == declaration.get("reference_experiment_id")
-            for r in mine
-        ):
-            record, materialize_error = await _compute_benchmark(
-                request,
-                experiment_id,
-                str(declaration.get("reference_experiment_id")),
-                label or declaration.get("label"),
-                None,
-            )
-            if record is not None:
-                mine = [record, *mine]
+        if declaration and declaration.get("mode") == "self_baseline":
+            # Self-baseline: score THIS run against its own first-K rounds — no
+            # reference experiment (an earlier version str()-wrapped the absent
+            # reference id into the literal "None" and asked the coordinator for
+            # experiment 'None'). Materialize on first view if not already saved.
+            if not any((r.get("reference") or {}).get("self_baseline") for r in mine):
+                record, materialize_error = await _compute_self_benchmark(
+                    request,
+                    experiment_id,
+                    int(declaration.get("baseline_rounds") or 0),
+                    bool(declaration.get("calibrate_envelope")),
+                    label or declaration.get("label"),
+                )
+                if record is not None:
+                    mine = [record, *mine]
+        elif declaration:
+            ref_id = declaration.get("reference_experiment_id")
+            if not ref_id:
+                materialize_error = (
+                    "the declared reference has no resolved experiment id — cannot score"
+                )
+            elif not any((r.get("reference") or {}).get("experiment_id") == ref_id for r in mine):
+                record, materialize_error = await _compute_benchmark(
+                    request,
+                    experiment_id,
+                    str(ref_id),
+                    label or declaration.get("label"),
+                    None,
+                )
+                if record is not None:
+                    mine = [record, *mine]
         track = [
             {
                 "computed_at": r.get("computed_at"),

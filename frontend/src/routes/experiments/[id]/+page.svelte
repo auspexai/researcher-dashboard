@@ -160,6 +160,15 @@
 	let bench = $state<ExperimentBenchmarks | null>(null);
 	let benchSelected = $state<BenchmarkRecord | null>(null);
 	let benchLoading = $state(false);
+	// A benchmark's reference reads as either the named cross-run experiment or, for a
+	// self-baselined run, its own first-K rounds (no reference experiment).
+	function benchRefLabel(ref: BenchmarkRecord['reference'] | undefined): string {
+		if (ref?.self_baseline) {
+			const k = ref.self_baseline.baseline_rounds;
+			return `its own first ${k} round${k === 1 ? '' : 's'} (self-baseline)`;
+		}
+		return ref?.label ?? ref?.experiment_id ?? 'unknown reference';
+	}
 	async function loadBenchmarks() {
 		if (!id || benchLoading) return;
 		benchLoading = true;
@@ -1249,13 +1258,13 @@
 		{#if bench.benchmarks.length}
 			{#if bench.benchmarks.length > 1}
 				<div class="bench-list">
-					{#each bench.benchmarks as b (b.path ?? b.reference.experiment_id)}
+					{#each bench.benchmarks as b (b.path ?? b.reference.experiment_id ?? 'self')}
 						<button
 							class="bench-item"
 							class:selected={benchSelected === b}
 							onclick={() => (benchSelected = b)}
 						>
-							vs {b.reference.label ?? b.reference.experiment_id}
+							vs {benchRefLabel(b.reference)}
 							<span class="mono">{b.report.peak_eu != null ? `${b.report.peak_eu.toFixed(2)} EU` : 'n/a'}</span>
 						</button>
 					{/each}
@@ -1266,7 +1275,7 @@
 				<div class="bench-headline">
 					<span class="bench-peak">{rep.peak_eu != null ? `${rep.peak_eu.toFixed(2)} EU` : 'n/a'}</span>
 					<span class="muted">peak drift vs</span>
-					<span class="mono">{benchSelected.reference.label ?? benchSelected.reference.experiment_id}</span>
+					<span class="mono">{benchRefLabel(benchSelected.reference)}</span>
 					{#if rep.breadth != null}<span>· {(rep.breadth * 100).toFixed(0)}% of probes beyond envelope</span>{/if}
 					{#if rep.byte_divergence_rate != null}<span class="muted">· byte-divergence {(rep.byte_divergence_rate * 100).toFixed(0)}% (separate overlay)</span>{/if}
 				</div>
@@ -1346,7 +1355,7 @@
 						<p class="muted small">
 							peak <strong>{rep.peak_eu?.toFixed(2)} EU</strong>
 							{#if rep.breadth != null}· breadth {(rep.breadth * 100).toFixed(0)}%{/if}
-							· vs <code>{benchSelected.reference.experiment_id}</code><br />
+							· vs <code>{benchRefLabel(benchSelected.reference)}</code><br />
 							destination: auspexai.network/benchmarks.html · signed with your tenant key ·
 							authorization + audit recorded coordinator-side
 						</p>
@@ -1372,8 +1381,12 @@
 			{/if}
 		{:else if bench.materialize_error}
 			<p class="warn-text">
-				declared reference: <span class="mono">{bench.declaration?.reference_experiment_id}</span> —
-				score not materialized: {bench.materialize_error}
+				{#if bench.declaration?.mode === 'self_baseline'}
+					self-baseline (first {bench.declaration?.baseline_rounds} rounds)
+				{:else}
+					declared reference: <span class="mono">{bench.declaration?.reference_experiment_id}</span>
+				{/if}
+				— score not materialized: {bench.materialize_error}
 			</p>
 		{:else if !bench.declaration && !bench.track.length}
 			<p class="muted">

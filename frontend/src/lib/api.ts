@@ -370,7 +370,13 @@ export interface BenchmarkRecord {
 	path?: string;
 	computed_at: string;
 	observation: { experiment_id: string; label?: string | null };
-	reference: { experiment_id: string; label?: string | null };
+	// A cross-run reference names an experiment_id; a self-baseline reference names
+	// the run's own first-K rounds (self_baseline) — no reference experiment.
+	reference: {
+		experiment_id?: string;
+		label?: string | null;
+		self_baseline?: { baseline_rounds: number; calibrate_envelope?: boolean };
+	};
 	report: BenchmarkReport;
 	saved_path?: string | null;
 }
@@ -390,6 +396,8 @@ export interface BenchmarkDeclaration {
 	experiment_id?: string;
 	label?: string;
 	reference_experiment_id?: string;
+	baseline_rounds?: number; // self_baseline mode: the first-K window
+	calibrate_envelope?: boolean;
 	declared_at?: string;
 	source?: string;
 }
@@ -410,7 +418,11 @@ export interface ExperimentBenchmarks {
 export interface BenchmarkSummary {
 	computed_at?: string;
 	observation?: { experiment_id?: string; label?: string | null };
-	reference?: { experiment_id?: string; label?: string | null };
+	reference?: {
+		experiment_id?: string;
+		label?: string | null;
+		self_baseline?: { baseline_rounds: number; calibrate_envelope?: boolean };
+	};
 	peak_eu?: number | null;
 	breadth?: number | null;
 	byte_divergence_rate?: number | null;

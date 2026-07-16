@@ -144,6 +144,83 @@ def test_experiment_benchmarks_lists_only_its_own(tmp_path: Path) -> None:
     assert rows[0]["report"]["peak_eu"] == 1.1
 
 
+def _self_declaration(tmp_path: Path, label: str, exp_id: str, k: int = 5) -> None:
+    d = tmp_path / "runs" / label
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "benchmark_reference.json").write_text(
+        json.dumps(
+            {
+                "schema": "auspexai-benchmark-declaration/v0",
+                "mode": "self_baseline",
+                "experiment_id": exp_id,
+                "label": label,
+                "baseline_rounds": k,
+                "calibrate_envelope": False,
+            }
+        )
+    )
+
+
+def test_self_baseline_declaration_does_not_ask_for_experiment_none(tmp_path: Path) -> None:
+    # Regression: a self_baseline run has NO reference experiment. The endpoint must
+    # not str()-wrap the absent reference id into "None" and ask the coordinator for
+    # experiment 'None'. With an unreachable coordinator it reports the collect
+    # failure for THIS run's own bundle — never "no experiment with id 'None'".
+    _self_declaration(tmp_path, "run-self", "exp-run-self", k=5)
+    client = TestClient(create_app(_config(tmp_path)))
+    body = client.get("/api/v0/experiments/exp-run-self/benchmarks").json()
+    assert body["benchmarks"] == []
+    assert body["declaration"]["mode"] == "self_baseline"
+    err = body["materialize_error"] or ""
+    assert "could not collect the evidence bundle" in err
+    assert "None" not in err  # the old bug surfaced as "no experiment with id 'None'"
+
+
+def test_self_baseline_zero_k_reports_why_not_a_score(tmp_path: Path) -> None:
+    # baseline_rounds=0 → no baseline window to self-reference; say so, don't crash.
+    _self_declaration(tmp_path, "run-self0", "exp-run-self0", k=0)
+    client = TestClient(create_app(_config(tmp_path)))
+    body = client.get("/api/v0/experiments/exp-run-self0/benchmarks").json()
+    assert body["benchmarks"] == []
+    assert "baseline_rounds is 0" in (body["materialize_error"] or "")
+
+
+def _saved_self_report(tmp_path: Path, label: str, exp_id: str, peak: float, at: str) -> None:
+    d = tmp_path / "runs" / label
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "benchmark_self.json").write_text(
+        json.dumps(
+            {
+                "schema": "auspexai-drift-benchmark-report/v0",
+                "computed_at": at,
+                "observation": {"experiment_id": exp_id, "label": label},
+                "reference": {"self_baseline": {"baseline_rounds": 5}},
+                "report": {
+                    "peak_eu": peak,
+                    "breadth": 0.1,
+                    "byte_divergence_rate": 0.0,
+                    "diverged_units_total": None,
+                    "probes": [{"key": "p-a"}],
+                },
+            }
+        )
+    )
+
+
+def test_saved_self_baseline_report_aggregated_and_no_recompute(tmp_path: Path) -> None:
+    # A saved benchmark_self.json is scanned like a benchmark_vs_* one, shows on the
+    # run's tab, and — being already saved — is not recomputed (materialize_error None).
+    _saved_self_report(tmp_path, "run-self", "exp-run-self", 2.5, "2026-07-15T10:00:00+00:00")
+    _self_declaration(tmp_path, "run-self", "exp-run-self", k=5)
+    client = TestClient(create_app(_config(tmp_path)))
+    body = client.get("/api/v0/experiments/exp-run-self/benchmarks").json()
+    assert body["benchmarks"][0]["report"]["peak_eu"] == 2.5
+    assert body["benchmarks"][0]["reference"]["self_baseline"]["baseline_rounds"] == 5
+    assert body["materialize_error"] is None  # saved → no recompute against a dead coord
+    rows = client.get("/api/v0/benchmarks").json()["benchmarks"]
+    assert any(r["observation"]["experiment_id"] == "exp-run-self" for r in rows)
+
+
 def test_reads_union_of_bases_including_env_runs_dir(tmp_path: Path, monkeypatch) -> None:
     # The 2026-07-03 live bug: launch wrote beside the run in the CLI's runs
     # dir; the dashboard scanned only its own base and reported "no benchmark"
