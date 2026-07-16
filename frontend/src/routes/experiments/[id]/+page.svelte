@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import {
 		api,
@@ -169,19 +170,38 @@
 		}
 		return ref?.label ?? ref?.experiment_id ?? 'unknown reference';
 	}
-	async function loadBenchmarks() {
-		if (!id || benchLoading) return;
-		benchLoading = true;
+	let benchPollTimer: ReturnType<typeof setTimeout> | null = null;
+	async function loadBenchmarks(poll = false) {
+		if (!id) return;
+		if (!poll && benchLoading) return;
+		if (benchPollTimer) {
+			clearTimeout(benchPollTimer);
+			benchPollTimer = null;
+		}
+		if (!poll) benchLoading = true;
 		try {
-			bench = await api.experimentBenchmarks(id, experiment?.tenant_experiment_label ?? undefined);
-			void loadPublications();
-			benchSelected = bench.benchmarks[0] ?? null;
+			const b = await api.experimentBenchmarks(
+				id,
+				experiment?.tenant_experiment_label ?? undefined,
+			);
+			bench = b;
+			benchSelected = b.benchmarks[0] ?? null;
+			if (b.materializing) {
+				// A first score is running in the background (a large run can take a
+				// minute) — poll until it lands or an error is reported.
+				benchPollTimer = setTimeout(() => void loadBenchmarks(true), 3000);
+			} else {
+				void loadPublications();
+			}
 		} catch {
-			bench = null;
+			if (!poll) bench = null;
 		} finally {
-			benchLoading = false;
+			if (!poll) benchLoading = false;
 		}
 	}
+	onDestroy(() => {
+		if (benchPollTimer) clearTimeout(benchPollTimer);
+	});
 	// Local verify-on-collect: the dashboard backend runs the SDK's verify_bundle
 	// on the collected bundle (on this machine) and returns the named-check result.
 	let verification = $state<BundleVerification | null>(null);
@@ -1251,10 +1271,17 @@
 	</p>
 
 	{#if benchLoading && !bench}
-		<p class="muted">Loading… (a first view scores the run — this collects and verifies both evidence bundles)</p>
+		<p class="muted">Loading…</p>
 	{:else if !bench}
 		<p class="muted">Benchmark data unavailable.</p>
 	{:else}
+		{#if bench.materializing}
+			<p class="muted scoring">
+				<span class="spin" aria-hidden="true"></span>
+				Scoring this run in the background — collecting and verifying the evidence bundle
+				(a large run can take a minute). The score appears here automatically when it's ready.
+			</p>
+		{/if}
 		{#if bench.benchmarks.length}
 			{#if bench.benchmarks.length > 1}
 				<div class="bench-list">
@@ -2246,5 +2273,26 @@
 	}
 	.more {
 		margin-top: 0.6rem;
+	}
+	.scoring {
+		display: flex;
+		align-items: center;
+		gap: 0.5em;
+	}
+	.spin {
+		width: 0.9em;
+		height: 0.9em;
+		border: 2px solid currentColor;
+		border-right-color: transparent;
+		border-radius: 50%;
+		display: inline-block;
+		opacity: 0.6;
+		animation: spin 0.8s linear infinite;
+		flex: none;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>

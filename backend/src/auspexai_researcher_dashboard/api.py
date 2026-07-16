@@ -11,7 +11,9 @@ A `CoordinatorError` is rendered as a stable error envelope the SPA branches on:
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,8 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from .coordinator import CoordinatorClient, CoordinatorError
+
+logger = logging.getLogger(__name__)
 
 
 def _runs_base(cfg) -> Path:
@@ -194,6 +198,15 @@ def _component_update(current: str | None, latest: str | None) -> dict[str, Any]
 def build_api_router() -> APIRouter:
     router = APIRouter(prefix="/api/v0")
 
+    # First-view benchmark scoring (collect + verify + score a run's bundle) can take
+    # a minute for a large run, so it runs in a BACKGROUND task instead of blocking the
+    # request on a bare "Loading…". This registry tracks in-flight/failed scores per
+    # experiment; the frontend polls until the score lands (or an error is reported).
+    # Per-router (per-app) → isolated across test apps. Tests set app.state
+    # `sync_materialize` to score inline and assert the result in one request.
+    _materialize_status: dict[str, dict[str, Any]] = {}
+    _bg_tasks: set[asyncio.Task] = set()
+
     def _envelope(e: CoordinatorError) -> JSONResponse:
         return JSONResponse(
             status_code=e.http_status,
@@ -206,11 +219,14 @@ def build_api_router() -> APIRouter:
             },
         )
 
-    def _client(request: Request) -> CoordinatorClient:
+    def _client_for_app(app) -> CoordinatorClient:
         # Test seam: production leaves this unset (real network); tests set an
         # httpx.MockTransport on app.state to exercise the signed proxy offline.
-        transport = getattr(request.app.state, "coord_transport", None)
-        return CoordinatorClient(request.app.state.config, transport=transport)
+        transport = getattr(app.state, "coord_transport", None)
+        return CoordinatorClient(app.state.config, transport=transport)
+
+    def _client(request: Request) -> CoordinatorClient:
+        return _client_for_app(request.app)
 
     async def _proxy(request: Request, path: str) -> JSONResponse:
         # Forward any query string (e.g. work-units ?status_filter=...). The
@@ -454,7 +470,7 @@ def build_api_router() -> APIRouter:
         )
 
     async def _compute_benchmark(
-        request: Request,
+        app,
         experiment_id: str,
         reference: str,
         label: str | None,
@@ -466,7 +482,7 @@ def build_api_router() -> APIRouter:
 
         from auspexai_tenant.benchmark import drift_benchmark_bundles
 
-        client = _client(request)
+        client = _client_for_app(app)
         try:
             bundle = await client.get_json(f"/api/v0/experiments/{experiment_id}/results/export")
             ref_bundle = await client.get_json(f"/api/v0/experiments/{reference}/results/export")
@@ -498,7 +514,7 @@ def build_api_router() -> APIRouter:
             "report": report.to_dict(),
         }
         try:
-            layout = RunLayout(label or experiment_id, base=_runs_base(request.app.state.config))
+            layout = RunLayout(label or experiment_id, base=_runs_base(app.state.config))
             layout.ensure()
             path = layout.bundle_path().parent / f"benchmark_vs_{reference}.json"
             path.write_text(json.dumps(record, indent=2))
@@ -508,7 +524,7 @@ def build_api_router() -> APIRouter:
         return record, None
 
     async def _compute_self_benchmark(
-        request: Request,
+        app,
         experiment_id: str,
         baseline_rounds: int,
         calibrate_envelope: bool,
@@ -527,7 +543,7 @@ def build_api_router() -> APIRouter:
                 "self-baseline is declared but baseline_rounds is 0 — there is no baseline "
                 "window to score the run against"
             )
-        client = _client(request)
+        client = _client_for_app(app)
         try:
             bundle = await client.get_json(f"/api/v0/experiments/{experiment_id}/results/export")
         except CoordinatorError as e:
@@ -567,7 +583,7 @@ def build_api_router() -> APIRouter:
             "report": report.to_dict(),
         }
         try:
-            layout = RunLayout(label or experiment_id, base=_runs_base(request.app.state.config))
+            layout = RunLayout(label or experiment_id, base=_runs_base(app.state.config))
             layout.ensure()
             path = layout.bundle_path().parent / "benchmark_self.json"
             path.write_text(json.dumps(record, indent=2))
@@ -575,6 +591,48 @@ def build_api_router() -> APIRouter:
         except (OSError, ValueError):
             pass
         return record, None
+
+    def _declaration_already_scored(declaration: dict, mine: list[dict]) -> bool:
+        """True if a saved record already covers this declaration (self-baseline, or the
+        named cross-run reference), so there is nothing left to materialize."""
+        if declaration.get("mode") == "self_baseline":
+            return any((r.get("reference") or {}).get("self_baseline") for r in mine)
+        ref_id = declaration.get("reference_experiment_id")
+        return bool(ref_id) and any(
+            (r.get("reference") or {}).get("experiment_id") == ref_id for r in mine
+        )
+
+    async def _materialize_now(
+        app, experiment_id: str, declaration: dict, label: str | None
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Score the run per its declaration — self-baseline (own first-K rounds) or a
+        named cross-run reference. Returns (record, None) or (None, why-not)."""
+        if declaration.get("mode") == "self_baseline":
+            return await _compute_self_benchmark(
+                app,
+                experiment_id,
+                int(declaration.get("baseline_rounds") or 0),
+                bool(declaration.get("calibrate_envelope")),
+                label,
+            )
+        ref_id = declaration.get("reference_experiment_id")
+        if not ref_id:
+            return None, "the declared reference has no resolved experiment id — cannot score"
+        return await _compute_benchmark(app, experiment_id, str(ref_id), label, None)
+
+    async def _bg_materialize(
+        app, experiment_id: str, declaration: dict, label: str | None
+    ) -> None:
+        """Background scorer: run _materialize_now and record the outcome so the polling
+        frontend learns when the score landed (or why it couldn't). Never raises — the
+        first view returns immediately with `materializing: true` instead of blocking a
+        minute-long collect+verify+score on a bare spinner."""
+        try:
+            _, err = await _materialize_now(app, experiment_id, declaration, label)
+            _materialize_status[experiment_id] = {"state": "error" if err else "done", "error": err}
+        except Exception as e:  # a background crash must not vanish
+            logger.exception("benchmark materialization crashed for %s", experiment_id)
+            _materialize_status[experiment_id] = {"state": "error", "error": f"scoring failed: {e}"}
 
     @router.get("/experiments/{experiment_id}/benchmarks")
     async def experiment_benchmarks(
@@ -601,37 +659,37 @@ def build_api_router() -> APIRouter:
             _runs_bases(request.app.state.config), experiment_id
         )
         materialize_error: str | None = None
-        if declaration and declaration.get("mode") == "self_baseline":
-            # Self-baseline: score THIS run against its own first-K rounds — no
-            # reference experiment (an earlier version str()-wrapped the absent
-            # reference id into the literal "None" and asked the coordinator for
-            # experiment 'None'). Materialize on first view if not already saved.
-            if not any((r.get("reference") or {}).get("self_baseline") for r in mine):
-                record, materialize_error = await _compute_self_benchmark(
-                    request,
-                    experiment_id,
-                    int(declaration.get("baseline_rounds") or 0),
-                    bool(declaration.get("calibrate_envelope")),
-                    label or declaration.get("label"),
+        materializing = False
+        if declaration and not _declaration_already_scored(declaration, mine):
+            declared_label = label or declaration.get("label")
+            if getattr(request.app.state, "sync_materialize", False):
+                # Synchronous mode (tests): score inline and return the outcome now.
+                record, materialize_error = await _materialize_now(
+                    request.app, experiment_id, declaration, declared_label
                 )
                 if record is not None:
                     mine = [record, *mine]
+            else:
+                # Background mode (production): a first score can take a minute for a
+                # large run, so kick it off and let the frontend poll rather than block
+                # the request on a spinner. Report a prior run's outcome from the status.
+                st = _materialize_status.get(experiment_id)
+                if st and st.get("state") == "running":
+                    materializing = True
+                elif st and st.get("state") == "error":
+                    materialize_error = st.get("error")
+                else:
+                    _materialize_status[experiment_id] = {"state": "running", "error": None}
+                    task = asyncio.create_task(
+                        _bg_materialize(request.app, experiment_id, declaration, declared_label)
+                    )
+                    _bg_tasks.add(task)
+                    task.add_done_callback(_bg_tasks.discard)
+                    materializing = True
         elif declaration:
-            ref_id = declaration.get("reference_experiment_id")
-            if not ref_id:
-                materialize_error = (
-                    "the declared reference has no resolved experiment id — cannot score"
-                )
-            elif not any((r.get("reference") or {}).get("experiment_id") == ref_id for r in mine):
-                record, materialize_error = await _compute_benchmark(
-                    request,
-                    experiment_id,
-                    str(ref_id),
-                    label or declaration.get("label"),
-                    None,
-                )
-                if record is not None:
-                    mine = [record, *mine]
+            # Already scored (or nothing to score) — clear any stale status so a
+            # re-open after a transient error retries cleanly next time.
+            _materialize_status.pop(experiment_id, None)
         track = [
             {
                 "computed_at": r.get("computed_at"),
@@ -650,6 +708,9 @@ def build_api_router() -> APIRouter:
                 "declaration": declaration,
                 "track": track,
                 "materialize_error": materialize_error,
+                # True while a first score is running in the background — the frontend
+                # polls until the score lands (or an error is reported).
+                "materializing": materializing,
             }
         )
 
@@ -708,7 +769,7 @@ def build_api_router() -> APIRouter:
         import os
         from datetime import UTC, datetime
 
-        from auspexai_tenant.benchmark_entry import build_entry, verify_entry
+        from auspexai_tenant.benchmark_entry import build_entry, build_entry_self, verify_entry
         from auspexai_tenant.evidence import verify_bundle
         from auspexai_tenant.experiment import Experiment
 
@@ -716,7 +777,9 @@ def build_api_router() -> APIRouter:
         client = _client(request)
         try:
             await client.get_json(f"/api/v0/experiments/{experiment_id}")
-            # The saved report (the Benchmark tab's data) names the reference.
+            # The saved report (the Benchmark tab's data) names the reference — either a
+            # cross-run experiment id, or `self_baseline` (this run's own first-K rounds,
+            # a single-anchor entry with NO reference experiment).
             records = [
                 r
                 for r in _scan_benchmark_records(_runs_bases(cfg))
@@ -733,12 +796,31 @@ def build_api_router() -> APIRouter:
                     },
                 )
             record = records[0]
-            reference_id = record["reference"]["experiment_id"]
+            ref = record.get("reference") or {}
+            is_self = bool(ref.get("self_baseline"))
+            reference_id = ref.get("experiment_id")  # None for a self-baseline entry
             obs_bundle = await client.get_json(
                 f"/api/v0/experiments/{experiment_id}/results/export"
             )
-            ref_bundle = await client.get_json(f"/api/v0/experiments/{reference_id}/results/export")
-            for side, blob in (("observation", obs_bundle), ("reference", ref_bundle)):
+            # A self-baseline entry has ONE bundle (this run); a cross-run entry has two.
+            bundles = [("observation", obs_bundle)]
+            ref_bundle: dict[str, Any] | None = None
+            if not is_self:
+                if not reference_id:
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "error": {
+                                "code": "no_reference",
+                                "message": "the saved report names no reference to publish against",
+                            }
+                        },
+                    )
+                ref_bundle = await client.get_json(
+                    f"/api/v0/experiments/{reference_id}/results/export"
+                )
+                bundles.append(("reference", ref_bundle))
+            for side, blob in bundles:
                 v = await run_in_threadpool(verify_bundle, blob)
                 if not v.ok:
                     return JSONResponse(
@@ -758,6 +840,8 @@ def build_api_router() -> APIRouter:
             resp = Experiment(cfg.coord_url, tkey, experiment_id)._post(
                 f"/api/v0/experiments/{experiment_id}/actions/authorize-benchmark-publication",
                 json={
+                    # None for self-baseline — the coordinator authorizes on the
+                    # observation alone (no reference attestation to bind).
                     "reference_experiment_id": reference_id,
                     "peak_eu": rep.get("peak_eu"),
                     "breadth": rep.get("breadth"),
@@ -769,14 +853,24 @@ def build_api_router() -> APIRouter:
             elif resp.status_code == 403:
                 detail = resp.json().get("detail", {}).get("error", {})
                 return JSONResponse(status_code=403, content={"error": detail})
-            entry = build_entry(
-                record=record,
-                observation_bundle=obs_bundle,
-                reference_bundle=ref_bundle,
-                tenant_id=(obs_bundle.get("manifest") or {}).get("tenant_id"),
-                key=tkey,
-                authorization=authorization,
-            )
+            tenant_id = (obs_bundle.get("manifest") or {}).get("tenant_id")
+            if is_self:
+                entry = build_entry_self(
+                    record=record,
+                    observation_bundle=obs_bundle,
+                    tenant_id=tenant_id,
+                    key=tkey,
+                    authorization=authorization,
+                )
+            else:
+                entry = build_entry(
+                    record=record,
+                    observation_bundle=obs_bundle,
+                    reference_bundle=ref_bundle,
+                    tenant_id=tenant_id,
+                    key=tkey,
+                    authorization=authorization,
+                )
             assert verify_entry(entry) is not None
             import httpx as _httpx
 

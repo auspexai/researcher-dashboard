@@ -25,6 +25,15 @@ def _config(tmp_path: Path) -> ResearcherDashboardConfig:
     )
 
 
+def _sync_client(tmp_path: Path) -> TestClient:
+    """A client that scores benchmarks INLINE rather than in a background task, so a
+    test sees the materialize outcome in a single request (production backgrounds it
+    and the frontend polls)."""
+    app = create_app(_config(tmp_path))
+    app.state.sync_materialize = True
+    return TestClient(app)
+
+
 def _saved_report(tmp_path: Path, label: str, ref: str, peak: float, at: str) -> None:
     _saved_report_at(tmp_path / "runs", label, ref, peak, at)
 
@@ -95,7 +104,7 @@ def test_declared_but_uncollectable_reports_why_not_a_score(tmp_path: Path) -> N
     # A declared reference with an unreachable coordinator: the endpoint says
     # WHY it could not materialize — never a fabricated score, never a 500.
     _declaration(tmp_path, "run-a", "exp-run-a", "exp-baseline")
-    client = TestClient(create_app(_config(tmp_path)))
+    client = _sync_client(tmp_path)
     r = client.get("/api/v0/experiments/exp-run-a/benchmarks")
     assert r.status_code == 200
     body = r.json()
@@ -167,7 +176,7 @@ def test_self_baseline_declaration_does_not_ask_for_experiment_none(tmp_path: Pa
     # experiment 'None'. With an unreachable coordinator it reports the collect
     # failure for THIS run's own bundle — never "no experiment with id 'None'".
     _self_declaration(tmp_path, "run-self", "exp-run-self", k=5)
-    client = TestClient(create_app(_config(tmp_path)))
+    client = _sync_client(tmp_path)
     body = client.get("/api/v0/experiments/exp-run-self/benchmarks").json()
     assert body["benchmarks"] == []
     assert body["declaration"]["mode"] == "self_baseline"
@@ -176,10 +185,22 @@ def test_self_baseline_declaration_does_not_ask_for_experiment_none(tmp_path: Pa
     assert "None" not in err  # the old bug surfaced as "no experiment with id 'None'"
 
 
+def test_self_baseline_first_view_scores_in_the_background(tmp_path: Path) -> None:
+    # Production path (no sync flag): the first view KICKS OFF a background score and
+    # returns materializing:true immediately — never a minute-long block on a bare
+    # spinner. The frontend polls until the score lands (or an error is reported).
+    _self_declaration(tmp_path, "run-bg", "exp-run-bg", k=5)
+    client = TestClient(create_app(_config(tmp_path)))
+    body = client.get("/api/v0/experiments/exp-run-bg/benchmarks").json()
+    assert body["benchmarks"] == []
+    assert body["materializing"] is True
+    assert body["materialize_error"] is None  # still running — no fabricated error/score
+
+
 def test_self_baseline_zero_k_reports_why_not_a_score(tmp_path: Path) -> None:
     # baseline_rounds=0 → no baseline window to self-reference; say so, don't crash.
     _self_declaration(tmp_path, "run-self0", "exp-run-self0", k=0)
-    client = TestClient(create_app(_config(tmp_path)))
+    client = _sync_client(tmp_path)
     body = client.get("/api/v0/experiments/exp-run-self0/benchmarks").json()
     assert body["benchmarks"] == []
     assert "baseline_rounds is 0" in (body["materialize_error"] or "")

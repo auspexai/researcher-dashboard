@@ -414,6 +414,9 @@ export interface ExperimentBenchmarks {
 	declaration: BenchmarkDeclaration | null;
 	track: BenchmarkTrackRow[];
 	materialize_error: string | null;
+	// True while a first score runs in the background (a large run can take a minute);
+	// the page polls until the score lands or an error is reported.
+	materializing?: boolean;
 }
 export interface BenchmarkSummary {
 	computed_at?: string;
