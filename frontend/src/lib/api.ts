@@ -796,6 +796,7 @@ export const api = {
 			fleet_can_auto_acquire?: boolean;
 			catalog_source?: 'hf' | 'curated';
 			catalog_fetched_at?: string | null;
+			catalog_stale?: boolean;
 		}>('/api/v0/supported'),
 	listModelRequests: () =>
 		getJson<{ requests?: ModelRequest[] }>('/api/v0/model-requests'),

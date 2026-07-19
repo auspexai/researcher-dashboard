@@ -15,6 +15,7 @@
 	let autoAcquire = $state(false);
 	let catalogSource = $state<'hf' | 'curated' | null>(null);
 	let catalogFetchedAt = $state<string | null>(null);
+	let catalogStale = $state(false);
 	let error = $state<ApiError | null>(null);
 
 	// Two honest layers: on the fleet now (available) vs. provisionable.
@@ -28,6 +29,7 @@
 			autoAcquire = data.fleet_can_auto_acquire ?? false;
 			catalogSource = data.catalog_source ?? null;
 			catalogFetchedAt = data.catalog_fetched_at ?? null;
+			catalogStale = data.catalog_stale ?? false;
 			models = data.models ?? []; // coordinator pre-sorts within each layer
 		} catch (e) {
 			error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
@@ -106,7 +108,12 @@
 				: ''}. <span class="dot runnable"></span> runnable on the current fleet ·
 			<span class="dot too_big"></span> would need a bigger worker than any online.
 		</p>
-		{#if refreshedNote()}
+		{#if catalogStale}
+			<p class="stale" role="status">
+				⚠ This provisionable menu may be out of date — the catalog hasn't refreshed recently.
+				What's <em>on the fleet now</em> above is unaffected (it's live).
+			</p>
+		{:else if refreshedNote()}
 			<p class="fresh">Polled from Hugging Face · refreshed {refreshedNote()}</p>
 		{/if}
 		{#if provisionable.length === 0}
@@ -204,6 +211,15 @@
 		font-size: 0.75rem;
 		margin: -0.5rem 0 0.9rem;
 		font-variant-numeric: tabular-nums;
+	}
+	.stale {
+		color: #e0b464;
+		font-size: 0.8rem;
+		margin: -0.3rem 0 0.9rem;
+	}
+	.stale em {
+		color: #b8bfd0;
+		font-style: normal;
 	}
 	.models {
 		list-style: none;

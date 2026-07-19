@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { api, ApiError, type Experiment } from '$lib/api';
 	import ErrorState from '$lib/components/ErrorState.svelte';
@@ -7,21 +7,34 @@
 
 	let experiments = $state<Experiment[] | null>(null);
 	let error = $state<ApiError | null>(null);
+	let updatedAt = $state<Date | null>(null);
 	// Each run's drift score vs its declared reference (saved reports; a run
 	// scored against several references shows its declared/most recent one).
 	let benchByExp = $state<Record<string, number | null>>({});
 
 	const fmt = (iso: string | undefined) => (iso ? new Date(iso).toLocaleString() : '—');
+	const fmtTime = (d: Date | null) => (d ? d.toLocaleTimeString() : '—');
 
-	onMount(async () => {
+	// Status auto-refreshes so a run's progress surfaces without a manual browser
+	// reload (the coordinator knows within seconds; the screen used to freeze at
+	// page-load). A SILENT poll updates in place and NEVER replaces a good table
+	// with an error — a transient blip keeps the last-known rows; only the FIRST
+	// load can surface ErrorState.
+	const POLL_MS = 12_000;
+	let timer: ReturnType<typeof setInterval> | null = null;
+
+	async function load(silent = false) {
 		try {
 			const data = await api.listExperiments();
 			// Newest first: most recently submitted at the top, oldest at the bottom.
 			experiments = (data.experiments ?? []).sort((a, b) =>
 				(b.submitted_at ?? '').localeCompare(a.submitted_at ?? '')
 			);
+			error = null;
+			updatedAt = new Date();
 		} catch (e) {
-			error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+			if (!silent) error = e instanceof ApiError ? e : new ApiError('client_error', String(e));
+			return; // a silent-poll failure keeps the existing table
 		}
 		try {
 			const map: Record<string, number | null> = {};
@@ -33,6 +46,25 @@
 		} catch {
 			/* the column just stays empty — benchmarks are supplementary here */
 		}
+	}
+
+	function tick() {
+		if (typeof document !== 'undefined' && document.hidden) return; // don't poll a hidden tab
+		void load(true);
+	}
+	function onVisible() {
+		if (typeof document !== 'undefined' && !document.hidden) void load(true); // catch up on re-focus
+	}
+
+	onMount(() => {
+		void load(false);
+		timer = setInterval(tick, POLL_MS);
+		document.addEventListener('visibilitychange', onVisible);
+	});
+	onDestroy(() => {
+		if (timer) clearInterval(timer);
+		if (typeof document !== 'undefined')
+			document.removeEventListener('visibilitychange', onVisible);
 	});
 </script>
 
@@ -41,6 +73,9 @@
 	Experiments running under your tenant on the AuspexAI network. Start a new run on the
 	<a href="/run">Run Experiment</a> page.
 </p>
+{#if experiments && experiments.length > 0}
+	<p class="updated" aria-live="polite">Status auto-refreshes · updated {fmtTime(updatedAt)}</p>
+{/if}
 
 {#if error}
 	<ErrorState {error} />
@@ -99,6 +134,11 @@
 	}
 	.lead {
 		color: #b8bfd0;
+	}
+	.updated {
+		color: #6b7390;
+		font-size: 0.75rem;
+		margin: -0.4rem 0 0.2rem;
 	}
 	.muted {
 		color: #8b93a7;
