@@ -637,8 +637,14 @@ def build_api_router() -> APIRouter:
             _, err = await _materialize_now(app, experiment_id, declaration, label)
             _materialize_status[experiment_id] = {"state": "error" if err else "done", "error": err}
         except Exception as e:  # a background crash must not vanish
-            logger.exception("benchmark materialization crashed for %s", experiment_id)
-            _materialize_status[experiment_id] = {"state": "error", "error": f"scoring failed: {e}"}
+            _materialize_status[experiment_id] = {
+                "state": "error",
+                "error": logged_failure(
+                    e,
+                    logger=logger,
+                    context=f"benchmark materialization crashed for {experiment_id}",
+                ),
+            }
 
     @router.get("/experiments/{experiment_id}/benchmarks")
     async def experiment_benchmarks(

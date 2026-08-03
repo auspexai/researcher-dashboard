@@ -192,7 +192,11 @@ def build_exec_router() -> APIRouter:
                 start_new_session=True,  # own process group → stop kills the driver's children too
             )
         except OSError as e:
-            return _error("exec_failed", f"could not launch the run: {e}", 500)
+            return _error(
+                "exec_failed",
+                logged_failure(e, logger=logger, context="could not launch the run"),
+                500,
+            )
         request.app.state.local_run = LocalRun(
             popen=popen, log_path=log_path, cmd=cmd, cwd=str(run_cwd), started_at=_now()
         )
@@ -235,7 +239,11 @@ def build_exec_router() -> APIRouter:
         try:
             _terminate(run.popen)
         except OSError as e:
-            return _error("exec_failed", f"could not stop the run: {e}", 500)
+            return _error(
+                "exec_failed",
+                logged_failure(e, logger=logger, context="could not stop the run"),
+                500,
+            )
         return JSONResponse({"stopped": True, "returncode": run.popen.poll()})
 
     return router

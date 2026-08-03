@@ -14,11 +14,17 @@ right state (§10 Q4) rather than a generic error — in particular the
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 from auspexai_tenant.http_signing import Rfc9421Auth
 from auspexai_tenant.signing import TenantKey
 
+from auspexai_researcher_dashboard.errors import logged_failure
+
 from .config import ResearcherDashboardConfig
+
+logger = logging.getLogger(__name__)
 
 
 class CoordinatorError(Exception):
@@ -174,7 +180,11 @@ class CoordinatorClient:
         except httpx.HTTPError as e:
             raise CoordinatorError(
                 "unreachable",
-                f"could not reach the coordinator at {self._config.coord_url}: {e}",
+                logged_failure(
+                    e,
+                    logger=logger,
+                    context=f"could not reach the coordinator at {self._config.coord_url}",
+                ),
                 http_status=502,
             ) from e
         self._raise_for_status(response)
@@ -200,7 +210,11 @@ class CoordinatorClient:
         except httpx.HTTPError as e:
             raise CoordinatorError(
                 "unreachable",
-                f"could not reach the coordinator at {self._config.coord_url}: {e}",
+                logged_failure(
+                    e,
+                    logger=logger,
+                    context=f"could not reach the coordinator at {self._config.coord_url}",
+                ),
                 http_status=502,
             ) from e
         self._raise_for_status(response)
