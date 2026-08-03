@@ -17,6 +17,13 @@ updates:
     groups:
       npm-dependencies:
         patterns: ["*"]
+    ignore:
+      # svelte-check 4.x breaks on TypeScript 7 (TypeError reading
+      # useCaseSensitiveFileNames), and a grouped PR that bundles the major with
+      # routine bumps blocks all of them. Take TS majors deliberately, once
+      # svelte-check supports it; minors and patches still flow.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   # GitHub Actions used by the CI / release workflows.
   - package-ecosystem: "github-actions"
     directory: "/"

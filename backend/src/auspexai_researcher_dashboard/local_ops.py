@@ -19,12 +19,17 @@ fallback instead of the form. Errors use the same envelope as the proxy routes:
 from __future__ import annotations
 
 import json
+import logging
 import tomllib
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+
+from auspexai_researcher_dashboard.errors import safe_detail
+
+logger = logging.getLogger(__name__)
 
 # experiment.toml tables the config form manages, in canonical write order. Any
 # OTHER table in an existing file (and any unmanaged key WITHIN these tables) is
@@ -166,7 +171,12 @@ def build_local_router() -> APIRouter:
             rendered = render_experiment_toml(merged)
             tomllib.loads(rendered)  # self-check: we emitted parseable TOML
         except (ValueError, tomllib.TOMLDecodeError) as e:
-            return _error("render_failed", f"could not render experiment.toml: {e}", 400)
+            return _error(
+                "render_failed",
+                "could not render experiment.toml: "
+                + safe_detail(e, logger=logger, context="experiment.toml render failed"),
+                400,
+            )
         cfg.workspace_dir.mkdir(parents=True, exist_ok=True)
         cfg.experiment_toml_path.write_text(rendered, encoding="utf-8")
         return JSONResponse({"written": str(cfg.experiment_toml_path), "config": merged})

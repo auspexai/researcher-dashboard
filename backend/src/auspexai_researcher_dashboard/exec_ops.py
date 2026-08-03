@@ -20,6 +20,7 @@ runs one experiment at a time). Its stdout+stderr stream to
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import signal
@@ -30,6 +31,10 @@ from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+
+from auspexai_researcher_dashboard.errors import safe_detail
+
+logger = logging.getLogger(__name__)
 
 # Short shells (build/submit) are bounded; a hung network call shouldn't wedge
 # the dashboard. `run` is unbounded by design (it's the long driver) and is
@@ -76,7 +81,12 @@ def _run_sync(cmd: list[str], cwd: Path, timeout: int) -> JSONResponse:
     except subprocess.TimeoutExpired:
         return _error("exec_timeout", f"`{' '.join(cmd[1:3])}` timed out after {timeout}s", 504)
     except OSError as e:
-        return _error("exec_failed", f"could not launch the SDK: {e}", 500)
+        return _error(
+            "exec_failed",
+            "could not launch the SDK: "
+            + safe_detail(e, logger=logger, context="SDK launch failed"),
+            500,
+        )
     return JSONResponse(
         {
             "ok": proc.returncode == 0,

@@ -189,3 +189,7 @@ htmlcov/
 
 # Build artifacts (Python side)
 *.eggs/
+
+# pnpm is the package manager (CI uses pnpm/action-setup); an npm lockfile
+# alongside it only drifts and doubles the dependency-bot surface.
+package-lock.json

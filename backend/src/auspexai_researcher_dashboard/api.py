@@ -26,6 +26,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from auspexai_researcher_dashboard.errors import safe_detail
+
 from .coordinator import CoordinatorClient, CoordinatorError
 
 logger = logging.getLogger(__name__)
@@ -311,7 +313,8 @@ def build_api_router() -> APIRouter:
                 content={
                     "error": {
                         "kind": "unreachable",
-                        "message": f"GitHub device-code request failed: {e}",
+                        "message": "GitHub device-code request failed: "
+                        + safe_detail(e, logger=logger, context="device-code request failed"),
                         "coordinator_status": None,
                     }
                 },
@@ -367,7 +370,8 @@ def build_api_router() -> APIRouter:
                 content={
                     "error": {
                         "kind": "unreachable",
-                        "message": f"GitHub token poll failed: {e}",
+                        "message": "GitHub token poll failed: "
+                        + safe_detail(e, logger=logger, context="device token poll failed"),
                         "coordinator_status": None,
                     }
                 },
@@ -460,7 +464,7 @@ def build_api_router() -> APIRouter:
         except Exception as e:  # a malformed/newer bundle is itself a failed verify
             verification = {
                 "ok": False,
-                "error": str(e),
+                "error": safe_detail(e, logger=logger, context="bundle verification failed"),
                 "checks": [],
                 "rekor": _rekor_status(bundle),
             }
