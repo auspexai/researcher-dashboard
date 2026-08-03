@@ -20,7 +20,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from auspexai_researcher_dashboard.errors import safe_detail
+from auspexai_researcher_dashboard.errors import logged_failure
 
 from . import __version__
 from .api import build_api_router
@@ -80,7 +80,7 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
                 coord_detail = r.json().get("status") if coord_ok else f"HTTP {r.status_code}"
         except httpx.HTTPError as e:
             coord_ok = False
-            coord_detail = "error: " + safe_detail(
+            coord_detail = logged_failure(
                 e, logger=logger, context="coordinator health probe failed"
             )
 

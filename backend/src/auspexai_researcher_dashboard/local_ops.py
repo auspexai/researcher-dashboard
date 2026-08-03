@@ -27,7 +27,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from auspexai_researcher_dashboard.errors import safe_detail
+from auspexai_researcher_dashboard.errors import logged_failure
 
 logger = logging.getLogger(__name__)
 
@@ -173,8 +173,7 @@ def build_local_router() -> APIRouter:
         except (ValueError, tomllib.TOMLDecodeError) as e:
             return _error(
                 "render_failed",
-                "could not render experiment.toml: "
-                + safe_detail(e, logger=logger, context="experiment.toml render failed"),
+                logged_failure(e, logger=logger, context="could not render experiment.toml"),
                 400,
             )
         cfg.workspace_dir.mkdir(parents=True, exist_ok=True)

@@ -1,36 +1,40 @@
 """Sanitized error detail for HTTP responses (CodeQL py/stack-trace-exposure).
 
 The dashboard is normally bound to localhost and its "external user" is the
-researcher running it, so leaking an exception string is a mild problem here —
-but it stops being mild the moment someone puts it behind a tunnel, and the
-diagnostics were flowing to the response verbatim.
+researcher running it, so leaking exception text is mild here — but it stops
+being mild the moment someone puts it behind a tunnel, and the diagnostics were
+flowing into response bodies verbatim.
 
-The tension worth naming: stripping detail entirely makes a debugging tool
-harder to debug, which is a real cost, not a hypothetical one. So this keeps a
-useful one-line summary in the response and puts the FULL exception, with
-traceback, in the server log where it belongs.
+**Why this returns a reference and not the exception text.** The first attempt
+kept a truncated `TypeName: message` in the response. That is a real improvement
+— the traceback goes to the log, the response is bounded to one line — but it
+does NOT clear the finding, because exception-derived data still reaches the
+client and that is exactly what the query tracks. Truncating tainted data leaves
+it tainted.
 
-Use `safe_detail(e)` wherever an exception would otherwise be interpolated into
-a response body.
+So: the full exception, with traceback, goes to the log under a short random
+reference, and the response carries our own message plus that reference. Nothing
+exception-derived crosses the boundary.
+
+The cost is real and worth stating: you can no longer read the failure cause
+straight off the HTTP response, which is a genuine step down for a debugging
+tool. The mitigation is that this is a local tool — the log is in the terminal
+you started it from, and the reference tells you which line to look at.
 """
 
 from __future__ import annotations
 
 import logging
+import uuid
 
-# Long enough to identify the failure, short enough that a paths-and-internals
-# dump cannot ride along.
-MAX_DETAIL_CHARS = 200
+__all__ = ["logged_failure"]
 
 
-def safe_detail(exc: BaseException, *, logger: logging.Logger, context: str) -> str:
-    """Log `exc` in full (with traceback) and return a short, response-safe summary.
+def logged_failure(exc: BaseException, *, logger: logging.Logger, context: str) -> str:
+    """Log `exc` in full under a short reference; return a response-safe message.
 
-    The summary is `TypeName: message`, truncated. Nothing multi-line survives:
-    a traceback interpolated into JSON is exactly the finding this closes."""
-    logger.exception("%s", context)
-    message = " ".join(str(exc).split())
-    if len(message) > MAX_DETAIL_CHARS:
-        message = message[: MAX_DETAIL_CHARS - 1].rstrip() + "…"
-    name = type(exc).__name__
-    return f"{name}: {message}" if message else name
+    `context` is caller-supplied static text, never derived from the exception,
+    so the returned string carries no tainted data."""
+    ref = uuid.uuid4().hex[:8]
+    logger.exception("[%s] %s", ref, context)
+    return f"{context} (see server log, ref {ref})"

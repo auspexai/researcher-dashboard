@@ -32,7 +32,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from auspexai_researcher_dashboard.errors import safe_detail
+from auspexai_researcher_dashboard.errors import logged_failure
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +83,7 @@ def _run_sync(cmd: list[str], cwd: Path, timeout: int) -> JSONResponse:
     except OSError as e:
         return _error(
             "exec_failed",
-            "could not launch the SDK: "
-            + safe_detail(e, logger=logger, context="SDK launch failed"),
+            logged_failure(e, logger=logger, context="could not launch the SDK"),
             500,
         )
     return JSONResponse(
