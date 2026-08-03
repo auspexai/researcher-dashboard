@@ -170,10 +170,10 @@ def build_local_router() -> APIRouter:
         try:
             rendered = render_experiment_toml(merged)
             tomllib.loads(rendered)  # self-check: we emitted parseable TOML
-        except (ValueError, tomllib.TOMLDecodeError) as e:
+        except (ValueError, tomllib.TOMLDecodeError):
             return _error(
                 "render_failed",
-                logged_failure(e, logger=logger, context="could not render experiment.toml"),
+                logged_failure(logger=logger, context="could not render experiment.toml"),
                 400,
             )
         cfg.workspace_dir.mkdir(parents=True, exist_ok=True)

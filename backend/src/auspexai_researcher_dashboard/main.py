@@ -78,11 +78,9 @@ def create_app(config: ResearcherDashboardConfig | None = None) -> FastAPI:
                 r = await client.get(f"{config.coord_url}/api/v0/health/public")
                 coord_ok = r.status_code == 200
                 coord_detail = r.json().get("status") if coord_ok else f"HTTP {r.status_code}"
-        except httpx.HTTPError as e:
+        except httpx.HTTPError:
             coord_ok = False
-            coord_detail = logged_failure(
-                e, logger=logger, context="coordinator health probe failed"
-            )
+            coord_detail = logged_failure(logger=logger, context="coordinator health probe failed")
 
         return JSONResponse(
             {

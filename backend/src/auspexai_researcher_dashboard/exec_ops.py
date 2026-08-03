@@ -80,10 +80,10 @@ def _run_sync(cmd: list[str], cwd: Path, timeout: int) -> JSONResponse:
         )
     except subprocess.TimeoutExpired:
         return _error("exec_timeout", f"`{' '.join(cmd[1:3])}` timed out after {timeout}s", 504)
-    except OSError as e:
+    except OSError:
         return _error(
             "exec_failed",
-            logged_failure(e, logger=logger, context="could not launch the SDK"),
+            logged_failure(logger=logger, context="could not launch the SDK"),
             500,
         )
     return JSONResponse(
@@ -191,10 +191,10 @@ def build_exec_router() -> APIRouter:
                 stderr=subprocess.STDOUT,
                 start_new_session=True,  # own process group → stop kills the driver's children too
             )
-        except OSError as e:
+        except OSError:
             return _error(
                 "exec_failed",
-                logged_failure(e, logger=logger, context="could not launch the run"),
+                logged_failure(logger=logger, context="could not launch the run"),
                 500,
             )
         request.app.state.local_run = LocalRun(
@@ -238,10 +238,10 @@ def build_exec_router() -> APIRouter:
             return JSONResponse({"stopped": True, "returncode": rc, "already_exited": True})
         try:
             _terminate(run.popen)
-        except OSError as e:
+        except OSError:
             return _error(
                 "exec_failed",
-                logged_failure(e, logger=logger, context="could not stop the run"),
+                logged_failure(logger=logger, context="could not stop the run"),
                 500,
             )
         return JSONResponse({"stopped": True, "returncode": run.popen.poll()})

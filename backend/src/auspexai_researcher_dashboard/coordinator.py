@@ -181,7 +181,6 @@ class CoordinatorClient:
             raise CoordinatorError(
                 "unreachable",
                 logged_failure(
-                    e,
                     logger=logger,
                     context=f"could not reach the coordinator at {self._config.coord_url}",
                 ),
@@ -211,7 +210,6 @@ class CoordinatorClient:
             raise CoordinatorError(
                 "unreachable",
                 logged_failure(
-                    e,
                     logger=logger,
                     context=f"could not reach the coordinator at {self._config.coord_url}",
                 ),

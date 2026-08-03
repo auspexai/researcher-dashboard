@@ -307,14 +307,14 @@ def build_api_router() -> APIRouter:
         server-side — GitHub's device endpoints are not browser-CORS-friendly."""
         try:
             code = await run_in_threadpool(request_device_code, client_id=default_client_id())
-        except Exception as e:
+        except Exception:
             return JSONResponse(
                 status_code=502,
                 content={
                     "error": {
                         "kind": "unreachable",
                         "message": logged_failure(
-                            e, logger=logger, context="GitHub device-code request failed"
+                            logger=logger, context="GitHub device-code request failed"
                         ),
                         "coordinator_status": None,
                     }
@@ -365,14 +365,14 @@ def build_api_router() -> APIRouter:
 
         try:
             payload = await run_in_threadpool(_poll)
-        except Exception as e:
+        except Exception:
             return JSONResponse(
                 status_code=502,
                 content={
                     "error": {
                         "kind": "unreachable",
                         "message": logged_failure(
-                            e, logger=logger, context="GitHub token poll failed"
+                            logger=logger, context="GitHub token poll failed"
                         ),
                         "coordinator_status": None,
                     }
@@ -463,10 +463,10 @@ def build_api_router() -> APIRouter:
         try:
             v = await run_in_threadpool(verify_bundle, bundle)
             verification = _shape_verification(v, bundle)
-        except Exception as e:  # a malformed/newer bundle is itself a failed verify
+        except Exception:  # a malformed/newer bundle is itself a failed verify
             verification = {
                 "ok": False,
-                "error": logged_failure(e, logger=logger, context="bundle verification failed"),
+                "error": logged_failure(logger=logger, context="bundle verification failed"),
                 "checks": [],
                 "rekor": _rekor_status(bundle),
             }
@@ -636,11 +636,10 @@ def build_api_router() -> APIRouter:
         try:
             _, err = await _materialize_now(app, experiment_id, declaration, label)
             _materialize_status[experiment_id] = {"state": "error" if err else "done", "error": err}
-        except Exception as e:  # a background crash must not vanish
+        except Exception:  # a background crash must not vanish
             _materialize_status[experiment_id] = {
                 "state": "error",
                 "error": logged_failure(
-                    e,
                     logger=logger,
                     context=f"benchmark materialization crashed for {experiment_id}",
                 ),
